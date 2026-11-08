@@ -71,7 +71,7 @@ class AssetManager {
 
   async mountZips(names, progress = () => {}) {
     let i = 0;
-    await Promise.all(names.map(async n => {
+    await Promise.all(names.map(async (n, priority) => {
       try {
         const r = await fetch('./' + n + '?v=m21'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
         const z = await JSZip.loadAsync(await r.arrayBuffer());
@@ -79,9 +79,9 @@ class AssetManager {
         // archive order, not network completion order; later archives have priority.
         for (const f of Object.values(z.files)) if (!f.dir) {
           const k=lc(base(f.name)), previous=this.entryPriority.get(k);
-          if(previous===undefined || i>=previous) {
+          if(previous===undefined || priority>=previous) {
             this.entries.set(k,f);
-            this.entryPriority.set(k,i);
+            this.entryPriority.set(k,priority);
           }
         }
         this._ok(n);
