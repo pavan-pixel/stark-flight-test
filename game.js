@@ -812,9 +812,9 @@ class ThirdPersonCamera {
   bump(amount) { this.shake = Math.max(this.shake, amount); }
 
   update(dt, target, { flying, boost, speed }) {
-    const want = (flying ? (boost ? 22 : 4.5) + Math.min(5, speed * 0.04) : 8) * this.userDist;
+    const want = (flying ? (boost ? 22 : 4.5) + Math.min(5, speed * 0.04) : 5.4) * this.userDist;
     this.curDist = THREE.MathUtils.damp(this.curDist, want, 2.2, dt);
-    const focus = this._tmp.set(target.x, target.y + (flying ? 0.95 : 1.35), target.z);
+    const focus = this._tmp.set(target.x, target.y + (flying ? 0.95 : 1.15), target.z);
     const off = this._dir.set(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch) + (flying ? 0.14 : 0.18), Math.cos(this.yaw) * Math.cos(this.pitch)).normalize();
     // Collision: pull the camera in if a building is between player and camera.
     const hit = this.city.raycast(focus, off, this.curDist + 0.5);
@@ -826,7 +826,7 @@ class ThirdPersonCamera {
     this.camera.position.copy(this.pos);
     if (this.shake > 0.001) { this.camera.position.x += (Math.random() - .5) * this.shake; this.camera.position.y += (Math.random() - .5) * this.shake; this.shake *= Math.pow(0.02, dt); }
     this.camera.lookAt(focus.x, focus.y + 0.1, focus.z);
-    const fov = 66 + (boost ? 18 : 0) + Math.min(14, speed * 0.12);
+    const fov = (flying ? 66 : 62) + (boost ? 18 : 0) + Math.min(14, speed * 0.12);
     this.camera.fov = THREE.MathUtils.damp(this.camera.fov, fov, 4, dt); this.camera.updateProjectionMatrix();
   }
 }
