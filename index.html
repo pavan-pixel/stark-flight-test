@@ -126,6 +126,19 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
  .heroReticle{width:72px;height:72px}
 }
 
+
+.missionPicker{display:flex;align-items:center;gap:10px;margin-top:14px;color:#b56b6d;font:8px ui-monospace,monospace;letter-spacing:.14em;flex-wrap:wrap}
+.missionPicker select{background:#160d16;color:#f0dfe1;border:1px solid #a74b4e;padding:9px 12px;font:9px ui-monospace,monospace;letter-spacing:.08em;min-width:165px}
+#helmetHud{position:absolute;inset:0;pointer-events:none;display:none;color:#a8f2ff;font:9px ui-monospace,monospace;letter-spacing:.14em;text-shadow:0 0 8px #4adfff}
+#helmetHud.active{display:block}
+.helmetTop,.helmetBottom{position:absolute;left:5%;right:5%;display:flex;justify-content:space-between;border-bottom:1px solid #69ddff55;padding:12px 0}
+.helmetTop{top:max(14px,env(safe-area-inset-top))}.helmetBottom{bottom:16px;border-top:1px solid #69ddff55;border-bottom:0}
+.helmetReticle{position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);width:46px;height:46px;border:1px solid #8ceeff88;border-radius:50%;display:grid;place-items:center;font-size:20px}
+#minimapWrap{z-index:8}
+#ui .controls{grid-template-columns:repeat(3,minmax(58px,70px));max-width:230px;gap:7px}
+#ui .btn{height:43px;min-width:58px;padding:0 6px;font-size:8px;letter-spacing:.06em}
+@media(max-height:440px){.missionPicker{margin-top:6px}.missionPicker select{padding:6px}.helmetTop,.helmetBottom{padding:7px 0}}
+
 </style>
 </head>
 <body>
@@ -169,7 +182,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
    <div class="jarvisRule"></div>
    <div class="jarvisHint">J.A.R.V.I.S. RECOMMENDS</div>
    <div class="jarvisText" id="jarvisHint">Select a database category. I will brief you on the selected system.</div>
-   <div class="menuActions"><button class="menuBtn primary" id="startGame">INITIATE</button><button class="menuBtn" id="openTutorial">FLIGHT BRIEFING</button></div>
+   <div class="missionPicker"><label for="missionSelect">DEPLOYMENT ZONE</label><select id="missionSelect"><option value="carrier">CARRIER STRIKE</option><option value="base">MILITARY BASE ASSAULT</option><option value="city">CITY DEFENSE</option></select></div><div class="menuActions"><button class="menuBtn primary" id="startGame">DEPLOY MARK 85</button><button class="menuBtn" id="openTutorial">TACTICAL BRIEFING</button></div>
   </section>
  </div>
  <div class="databaseBottom"><span>STARK INDUSTRIES / R&D DIVISION</span><span>J.A.R.V.I.S. VOICE INTERFACE ENABLED</span><span>BUILD 01.85</span></div>
@@ -177,13 +190,13 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 <div id="tutorial"><div class="tutorialCard"><div class="jarvisHeader"><span class="jarvisDot"></span> J.A.R.V.I.S. / FLIGHT BRIEFING</div><h2>FLIGHT CONTROL TRAINING</h2><p><b>Movement:</b> Use the left control pad to walk and steer.</p><p><b>Camera:</b> Drag the open screen area to look around.</p><p><b>Takeoff:</b> Select FLY. Use UP and DOWN to control altitude.</p><p><b>Flight:</b> Hold BOOST for acceleration. Use FIRE to discharge both repulsors.</p><p><b>Landing:</b> Select LAND when you are near a safe surface.</p><p class="jarvisQuote">“I will monitor your flight systems, sir. Try to avoid the buildings.”</p><button class="menuBtn primary" id="closeTutorial">ACKNOWLEDGED</button></div></div><div id="ui" class="gameHidden">
  <div class="top"><div><div class="brand">STARK INDUSTRIES</div><div class="sub">MARK 85 // OPEN CITY BUILD // M21</div><div class="sub" id="assetstat"></div></div>
   <div class="readout">MODE <b id="mode">WALK</b><br>ALT <b id="alt">GROUND</b><br>SPD <b id="spd">0</b><br>NRG <b id="nrg">100</b></div></div>
- <div id="toast"></div><div id="mission">PROTOCOL 01 · 0/3</div><div id="minimapWrap"><canvas id="minimap" width="160" height="160"></canvas></div>
+ <div id="toast"></div><div id="mission">OPERATION · HOSTILES 0/6</div><div id="helmetHud"><div class="helmetTop"><span>J.A.R.V.I.S. / TACTICAL LINK</span><span id="healthValue">100%</span></div><div class="helmetReticle">+</div><div class="helmetBottom"><span>ARC REACTOR <b id="helmetEnergy">100%</b></span><span>THREAT SCAN <b id="targetStatus">STANDBY</b></span></div></div><div id="minimapWrap"><canvas id="minimap" width="160" height="160"></canvas></div>
  <div class="bottom"><div><div class="joystick" id="joy"><div class="stick" id="stick"></div></div></div>
  <div class="controls">
-  <button class="btn" id="run">RUN</button><button class="btn gold" id="fly">FLY</button>
+  <button class="btn" id="run">RUN</button><button class="btn" id="attack" hidden>PUNCH</button><button class="btn" id="kick" hidden>KICK</button><button class="btn gold" id="fly">FLY</button>
   <button class="btn" id="up" hidden>UP</button><button class="btn" id="down" hidden>DOWN</button>
   <button class="btn gold" id="land" hidden>LAND</button><button class="btn" id="hover" hidden>HOVER</button>
-  <button class="btn gold" id="boost" hidden>BOOST</button><button class="btn red" id="fire" hidden>FIRE</button>
+  <button class="btn gold" id="boost" hidden>BOOST</button><button class="btn red" id="fire" hidden>REPULSOR</button><button class="btn" id="lock" hidden>LOCK</button><button class="btn" id="view">HELMET</button>
  </div></div>
 </div>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
@@ -197,5 +210,5 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
  document.addEventListener('touchmove',function(e){e.preventDefault()},{passive:false});
 })();
 </script>
-<script type="module" src="./game.js?v=m41"></script>
+<script type="module" src="./game.js?v=m42"></script>
 </body></html>
