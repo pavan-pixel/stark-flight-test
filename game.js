@@ -4,11 +4,11 @@ import {GLTFLoader} from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js
 import JSZip from 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm';
 const $=id=>document.getElementById(id),clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 let scene,camera,renderer,clock,iron=null,city=[],cars=[],shots=[],steer={x:0,y:0},flight=false,run=false,boost=false,hover=false,energy=100,shotAt=0;
-let cameraYaw=0,cameraPitch=.16,cameraDistance=10,draggingCamera=false,lastPointer={x:0,y:0};
+let cameraYaw=0,cameraPitch=.16,cameraDistance=12,draggingCamera=false,lastPointer={x:0,y:0};
 function loading(t,p){$('loadtext').textContent=t;$('loadbar').style.width=p+'%'}
 function mat(color,metalness=.2,roughness=.7){return new THREE.MeshStandardMaterial({color,metalness,roughness})}
 function init(){
- scene=new THREE.Scene();scene.background=new THREE.Color(0x8da9c2);scene.fog=new THREE.FogExp2(0x9aafc2,.00055);
+ scene=new THREE.Scene();scene.background=new THREE.Color(0x8da9c2);scene.fog=new THREE.FogExp2(0x9aafc2,.00038);
  camera=new THREE.PerspectiveCamera(62,innerWidth/innerHeight,.1,3000);
  renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.25));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;document.body.prepend(renderer.domElement);
  clock=new THREE.Clock();scene.add(new THREE.HemisphereLight(0xc8e5ff,0x39404b,2.0));
@@ -17,27 +17,36 @@ function init(){
  try{makeCity();loadSuit();controls();setupCameraSwipe();addEventListener('resize',resize);animate()}catch(err){console.error('STARK INIT FAILED',err);loading('STARTUP ERROR: '+(err.message||err),100)}
 }
 function makeCity(){
- const road=new THREE.Mesh(new THREE.PlaneGeometry(54,2400),mat(0x171e27,.05,.95));road.rotation.x=-Math.PI/2;road.position.set(0,-.08,-1050);scene.add(road);
- const pavement=mat(0x68727b,.08,.9),lane=new THREE.MeshBasicMaterial({color:0xe6e9ec,transparent:true,opacity:.35});
- const metal=mat(0x778695,.8,.38);
+ // Main avenue with a wide central carriageway and two sidewalks.
+ const asphalt=mat(0x202831,.02,.96),sidewalkMat=mat(0x858b8e,.03,.92),curbMat=mat(0xb2b4b3,.05,.8);
+ const road=new THREE.Mesh(new THREE.PlaneGeometry(46,2600),asphalt);road.rotation.x=-Math.PI/2;road.position.set(0,-.09,-1120);scene.add(road);
  for(const side of [-1,1]){
-  const sidewalk=new THREE.Mesh(new THREE.BoxGeometry(8,.35,2400),pavement);sidewalk.position.set(side*31,.04,-1050);scene.add(sidewalk);
+  const walk=new THREE.Mesh(new THREE.PlaneGeometry(9,2600),sidewalkMat);walk.rotation.x=-Math.PI/2;walk.position.set(side*27.5,-.015,-1120);scene.add(walk);
+  const curb=new THREE.Mesh(new THREE.BoxGeometry(.35,.28,2600),curbMat);curb.position.set(side*23.1,.08,-1120);scene.add(curb);
  }
- for(const x of [-10,-3,3,10]){const stripe=new THREE.Mesh(new THREE.PlaneGeometry(.16,2350),lane);stripe.rotation.x=-Math.PI/2;stripe.position.set(x,.005,-1050);scene.add(stripe)}
- // Downtown GLTF models are loaded from the four uploaded archive parts.
+ const lane=new THREE.MeshBasicMaterial({color:0xd8dfe4,transparent:true,opacity:.42});
+ for(const x of [-8,-2.7,2.7,8]){const stripe=new THREE.Mesh(new THREE.PlaneGeometry(.12,2550),lane);stripe.rotation.x=-Math.PI/2;stripe.position.set(x,.008,-1120);scene.add(stripe)}
+ // Side streets / intersections every few blocks.
+ for(let z=-120;z>-2450;z-=300){
+  const cross=new THREE.Mesh(new THREE.PlaneGeometry(190,15),asphalt);cross.rotation.x=-Math.PI/2;cross.position.set(0,-.075,z);scene.add(cross);
+  for(let x=-20;x<=20;x+=2.5){const bar=new THREE.Mesh(new THREE.PlaneGeometry(1.15,5),new THREE.MeshBasicMaterial({color:0xe8ecee}));bar.rotation.x=-Math.PI/2;bar.position.set(x,.012,z+8);scene.add(bar)}
+ }
+ const metal=mat(0x596b78,.72,.38),lampGlow=new THREE.MeshBasicMaterial({color:0xffe2b0});
+ for(let z=-24;z>-2500;z-=72)for(const side of [-1,1]){
+  const pole=new THREE.Mesh(new THREE.CylinderGeometry(.09,.15,7.4,7),metal);pole.position.set(side*21.7,3.7,z);scene.add(pole);
+  const arm=new THREE.Mesh(new THREE.BoxGeometry(2,.12,.12),metal);arm.position.set(side*20.9,7.15,z);scene.add(arm);
+  const bulb=new THREE.Mesh(new THREE.BoxGeometry(.55,.12,.32),lampGlow);bulb.position.set(side*20,7.05,z);scene.add(bulb);
+ }
+ // Low-detail traffic is deliberately kept light for mobile GPUs.
+ for(let i=0;i<24;i++){
+  const c=new THREE.Group(),paint=mat([0x263a50,0x8c3430,0x9ba6ac,0x303c3d,0xc6b38a][i%5],.48,.34);
+  const body=new THREE.Mesh(new THREE.BoxGeometry(1.85,.68,4.0),paint);body.position.y=.52;c.add(body);
+  const cabin=new THREE.Mesh(new THREE.BoxGeometry(1.48,.52,1.75),mat(0x182b3c,.5,.22));cabin.position.set(0,1.04,-.12);c.add(cabin);
+  for(const x of [-.72,.72])for(const z of [-1.25,1.25]){const w=new THREE.Mesh(new THREE.CylinderGeometry(.25,.25,.14,8),mat(0x111418,.05,.9));w.rotation.z=Math.PI/2;w.position.set(x,.28,z);c.add(w)}
+  c.position.set((i%2?1:-1)*(5+Math.random()*10),0,-Math.random()*2300);scene.add(c);cars.push(c);
+ }
+ const ground=new THREE.Mesh(new THREE.PlaneGeometry(3400,3400),mat(0x56636b,.02,.99));ground.rotation.x=-Math.PI/2;ground.position.set(0,-.5,-1100);scene.add(ground);
  loadCityModels();
- // Street furniture and traffic occupy the street-level corridor.
- for(let z=-18;z>-2100;z-=58)for(const side of [-1,1]){
-  const pole=new THREE.Mesh(new THREE.CylinderGeometry(.1,.16,8,7),metal);pole.position.set(side*29,4,z);scene.add(pole);
-  const arm=new THREE.Mesh(new THREE.BoxGeometry(2.4,.13,.13),metal);arm.position.set(side*28,7.8,z);scene.add(arm);
-  const bulb=new THREE.Mesh(new THREE.BoxGeometry(.65,.13,.35),new THREE.MeshBasicMaterial({color:0xffe3ad}));bulb.position.set(side*27,7.7,z);scene.add(bulb);
- }
- for(let i=0;i<28;i++){
-  const c=new THREE.Group(),body=new THREE.Mesh(new THREE.BoxGeometry(2,.72,4.2),mat([0x172b43,0x7b2d2c,0x9c9da4,0x17201f][i%4],.55,.32));c.add(body);
-  const cabin=new THREE.Mesh(new THREE.BoxGeometry(1.5,.5,1.9),mat(0x183044,.45,.25));cabin.position.y=.48;c.add(cabin);
-  c.position.set((Math.random()-.5)*19,.5,-Math.random()*2200);scene.add(c);cars.push(c);
- }
- const ground=new THREE.Mesh(new THREE.PlaneGeometry(2800,2800),mat(0x56636b,.05,.98));ground.rotation.x=-Math.PI/2;ground.position.set(0,-.4,-1050);scene.add(ground);
 }
 async function loadCityModels(){
  try{
@@ -66,21 +75,36 @@ async function loadCityModels(){
    loadModel('Building_Small_1'),loadModel('Decal_Crosswalk')
   ]);
   const templates=[large,medium,small];
-  // Place the actual models close enough to the road and inside the camera's view.
-  for(let i=0;i<30;i++){
-   const side=i%2===0?-1:1,block=Math.floor(i/2),z=-30-block*78;
-   const template=templates[(block*5+(side>0?1:0))%templates.length];
-   const model=template.clone(true);
-   const rawBox=new THREE.Box3().setFromObject(model),rawSize=rawBox.getSize(new THREE.Vector3());
-   const targetHeight=[52,43,38][templates.indexOf(template)];
-   model.scale.setScalar(targetHeight/Math.max(1,rawSize.y));
-   const bounds=new THREE.Box3().setFromObject(model),center=bounds.getCenter(new THREE.Vector3());
-   model.position.set(side*43-center.x,-bounds.min.y,z-center.z);
+  const streetBlocks=[];
+  // Close street frontage: buildings sit beyond sidewalks, not inside the road.
+  for(let block=0;block<32;block++){
+   const z=-45-block*74;
+   for(const side of [-1,1]){
+    const template=templates[(block*3+(side>0?1:0))%3],model=template.clone(true);
+    const raw=new THREE.Box3().setFromObject(model),rawSize=raw.getSize(new THREE.Vector3());
+    const targetHeight=block%5===0?62:(block%3===0?48:38);
+    model.scale.setScalar(targetHeight/Math.max(1,rawSize.y));
+    const box=new THREE.Box3().setFromObject(model),center=box.getCenter(new THREE.Vector3());
+    const x=side*(39+(block%4)*3.5);
+    model.position.set(x-center.x,-box.min.y,z-center.z);
+    model.rotation.y=side<0?0:Math.PI;
+    model.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true}});
+    scene.add(model);city.push(model);streetBlocks.push(model);
+   }
+  }
+  // Distant skyline: smaller copies create depth without expensive extra geometry.
+  for(let i=0;i<26;i++){
+   const template=templates[i%3],model=template.clone(true);
+   const raw=new THREE.Box3().setFromObject(model),size=raw.getSize(new THREE.Vector3());
+   const h=65+(i%6)*13;model.scale.setScalar(h/Math.max(1,size.y));
+   const box=new THREE.Box3().setFromObject(model),center=box.getCenter(new THREE.Vector3());
+   const side=i%2===0?-1:1,depth=-220-(i%13)*145;
+   model.position.set(side*(105+(i%4)*18)-center.x,-box.min.y,depth-center.z);
    model.rotation.y=side<0?0:Math.PI;
-   model.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true}});
+   model.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=false}});
    scene.add(model);city.push(model);
   }
-  for(let z=-75;z>-2200;z-=156){const mark=crosswalk.clone(true);mark.scale.setScalar(4);mark.position.set(0,.025,z);scene.add(mark)}
+  for(let z=-110;z>-2450;z-=300){const mark=crosswalk.clone(true);mark.scale.setScalar(4.2);mark.position.set(0,.03,z);scene.add(mark)}
   for(const u of urls.values())URL.revokeObjectURL(u);
   loading('DOWNTOWN CITY READY',45);
  }catch(err){console.error('City asset loading failed:',err);loading('CITY ASSET ERROR: '+err.message,30)}
