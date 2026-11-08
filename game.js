@@ -66,7 +66,7 @@ class AssetManager {
     let i = 0;
     await Promise.all(names.map(async n => {
       try {
-        const r = await fetch('./' + n + '?v=m7'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
+        const r = await fetch('./' + n + '?v=m8'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
         const z = await JSZip.loadAsync(await r.arrayBuffer());
         for (const f of Object.values(z.files)) if (!f.dir) this.entries.set(lc(base(f.name)), f);
         this._ok(n);
@@ -252,11 +252,13 @@ class CityManager {
         const target = 18 + r() * 22; // each building gets its own footprint (18-40 m)
         const s = Math.min(target / t.w, target / t.d);
         const sy = s * (0.85 + r() * 0.5) * (1 + (1 - Math.min(1, dist)) * 0.7);
-        const sw = t.w * s, sd = t.d * s;
+        // Non-uniform scale: same model comes out wider/narrower and deeper/shallower per building (capped to the 36 m block).
+        const sx = Math.min(s * (0.78 + r() * 0.44), 36 / t.w), sz = Math.min(s * (0.78 + r() * 0.44), 36 / t.d);
+        const sw = t.w * sx, sd = t.d * sz;
         const hx = (faceZ ? sw : sd) / 2, hz = (faceZ ? sd : sw) / 2;
         const px = faceZ ? cx + qx * SLOT / 2 : cx + qx * (SLOT - hx);
         const pz = faceZ ? cz + qz * (SLOT - hz) : cz + qz * SLOT / 2;
-        M.compose(V.set(px, 0, pz), Q.setFromAxisAngle(UP, rot), S.set(s, sy, s));
+        M.compose(V.set(px, 0, pz), Q.setFromAxisAngle(UP, rot), S.set(sx, sy, sz));
         M.multiply(new THREE.Matrix4().makeTranslation(-t.cx, -t.min.y, -t.cz));
         const height = t.h * sy;
         const sh = 0.55 + r() * 0.75, wa = 0.85 + r() * 0.3;
