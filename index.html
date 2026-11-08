@@ -54,11 +54,93 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 @media(max-width:700px){.databaseTop,.databaseBottom{padding:0 10px;font-size:7px}.databaseLayout{grid-template-columns:34% 1fr;grid-template-rows:1fr auto;padding:10px;gap:8px}.databaseHero{display:none}.databaseNav{padding-right:7px}.dbTab{font-size:7px;height:42px;padding:0 5px}.dbTab span{margin-right:3px}.jarvisPanel{padding:10px 5px}.jarvisHeader{font-size:9px}.jarvisHeader small{display:none}.jarvisTag{margin-top:18px}.jarvisText{font-size:10px}.menuActions{margin-top:14px}.menuBtn{padding:11px 10px;font-size:8px}}
 @media(max-height:430px){.databaseTop,.databaseBottom{height:24px}.databaseLayout{height:calc(100% - 48px);padding:7px 14px}.dbTab{height:30px}.jarvisTag{margin-top:12px}.jarvisRule{margin:10px 0}.menuActions{padding-top:8px}}
 
+
+/* Cinematic boot sequence */
+#loading{background:radial-gradient(ellipse at 50% 46%,#143447 0%,#081522 36%,#02060d 78%);overflow:hidden}
+#loading:before,#loading:after{content:"";position:absolute;inset:0;pointer-events:none}
+#loading:before{background:repeating-linear-gradient(0deg,transparent 0 3px,#8ceaff08 4px,transparent 5px);opacity:.45}
+#loading:after{border:1px solid #7beaff18;inset:18px;box-shadow:inset 0 0 80px #38bde80a}
+.bootSequence{position:relative;width:min(420px,82vw);display:flex;flex-direction:column;align-items:center}
+.bootWordmark{font:10px ui-monospace,monospace;letter-spacing:.34em;color:#bcefff;margin-bottom:25px}
+.bootWordmark span{color:#6f94a8}
+.reactorLoader{width:112px;height:112px;position:relative;display:grid;place-items:center;margin-bottom:26px}
+.reactorCore{width:43px;height:43px;border:2px solid #c4f8ff;border-radius:50%;background:radial-gradient(circle,#f6ffff 0 8%,#8ceeff 18%,#2186ad 44%,#0b2538 72%);box-shadow:0 0 16px #7cecff,0 0 42px #29caff99;animation:corePulse 1.6s ease-in-out infinite}
+.reactorCore i{position:absolute;width:68px;height:68px;border:1px solid #8ceeff66;border-radius:50%;left:50%;top:50%;transform:translate(-50%,-50%)}
+.reactorOrbit{position:absolute;inset:5px;border:1px solid #79eaff66;border-radius:50%;border-top-color:#d7fbff;border-bottom-color:#2b718e;animation:reactorSpin 3.2s linear infinite}
+.orbitB{inset:15px;transform:rotateX(68deg) rotateY(25deg);animation-duration:2.2s;animation-direction:reverse;border-color:#e6bd7566;border-left-color:#f2d89d}
+.reactorTicks{position:absolute;inset:-8px;border:1px dashed #79eaff22;border-radius:50%;animation:reactorSpin 18s linear infinite}
+.loaderTitle{font-size:10px;letter-spacing:.24em;color:#dffaff}.loaderTitle b{color:#f1c77f}
+.loaderSub{margin-top:12px;font:9px ui-monospace,monospace;letter-spacing:.12em;color:#88b3c7;text-align:center;min-height:14px}
+.bootProgress{width:100%;height:2px;background:#18394b;margin:20px 0 12px;overflow:hidden}
+.bootProgress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#2b91b9,#d9fbff);box-shadow:0 0 12px #72eaff;transition:width .35s ease}
+.bootFoot{width:100%;display:flex;justify-content:space-between;color:#52788a;font:7px ui-monospace,monospace;letter-spacing:.14em}
+#errors{display:none!important}
+@keyframes reactorSpin{to{transform:rotate(360deg)}}
+@keyframes corePulse{0%,100%{transform:scale(.92);filter:brightness(.85)}50%{transform:scale(1.08);filter:brightness(1.35)}}
+/* Menu should feel like a character-selection screen, not a diagnostic dashboard. */
+.databaseTop{height:28px;padding:0 16px;font-size:8px}
+.databaseBottom{height:22px;padding:0 16px;font-size:7px;opacity:.65}
+.databaseLayout{height:calc(100% - 50px);padding:12px 16px;gap:12px;grid-template-columns:minmax(145px,.82fr) minmax(180px,1.35fr) minmax(210px,1.25fr)}
+.databaseNav{gap:6px;padding-right:10px;min-width:0}
+.dbTab{height:clamp(32px,6.2vh,42px);font-size:8px}
+.databaseHero{padding:12px 8px;background:radial-gradient(ellipse at 50% 58%,#1d526d66,transparent 60%),linear-gradient(180deg,#0b111a10,#10101805);min-width:0}
+.heroTitle{font-size:clamp(20px,3.2vw,34px);margin-top:5px}
+.heroReticle{width:115px;height:115px;border-color:#8ceeff55;color:#a5efff}
+.heroReticle:before,.heroReticle:after{background:#8ceeff55}
+.heroBottom{font-size:7px}
+.jarvisPanel{padding:12px 8px 6px 14px;min-width:0}
+.jarvisTag{margin-top:20px}
+.jarvisTitle{font-size:clamp(15px,2.1vw,21px)}
+.jarvisText{font-size:clamp(9px,1.1vw,11px);line-height:1.55}
+.jarvisRule{margin:14px 0 10px}
+.menuActions{padding-top:12px}
+.menuBtn{padding:11px 13px;font-size:8px}
+@media(max-width:900px){
+ .databaseLayout{grid-template-columns:minmax(130px,27%) minmax(145px,32%) minmax(185px,41%);padding:8px 10px;gap:8px}
+ .databaseNav{padding-right:7px;gap:5px}
+ .dbTab{height:clamp(29px,6.4vh,38px);font-size:7px;padding:0 5px;letter-spacing:.04em}
+ .databaseTop{padding:0 10px;font-size:7px}
+ .databaseBottom{padding:0 10px;font-size:6px}
+ .databaseHero{padding:10px 5px}
+ .heroTitle{font-size:22px}
+ .heroReticle{width:90px;height:90px}
+ .jarvisPanel{padding:9px 4px}
+ .jarvisHeader{font-size:8px}
+ .jarvisHeader small{display:none}
+ .jarvisTag{margin-top:13px;font-size:7px}
+ .jarvisTitle{font-size:15px;margin:7px 0}
+ .jarvisText{font-size:9px;line-height:1.45}
+ .jarvisRule{margin:10px 0 7px}
+ .menuActions{gap:6px;padding-top:8px}
+ .menuBtn{padding:9px 8px;font-size:7px}
+ .navFoot{font-size:6px}
+}
+@media(max-height:440px){
+ .databaseTop{height:22px}
+ .databaseBottom{height:18px}
+ .databaseLayout{height:calc(100% - 40px);padding:5px 10px}
+ .dbTab{height:27px}
+ .jarvisTag{margin-top:8px}
+ .jarvisRule{margin:7px 0 5px}
+ .menuActions{padding-top:5px}
+ .heroReticle{width:72px;height:72px}
+}
+
 </style>
 </head>
 <body>
 <div id="rotate"><div><div style="font-size:36px;margin-bottom:16px">↻</div>ROTATE YOUR PHONE TO LANDSCAPE<br><small style="display:block;margin-top:12px;color:#7893a8">PROJECT STARK IS BUILT FOR WIDE SCREEN</small></div></div>
-<div id="loading"><div><div class="loaderTitle">PROJECT STARK</div><div class="loaderSub" id="loadtext">INITIALIZING SYSTEMS</div><div class="bar"><i id="loadbar"></i></div><div id="errors"></div></div></div>
+<div id="loading">
+ <div class="bootSequence">
+  <div class="bootWordmark">STARK <span>INDUSTRIES</span></div>
+  <div class="reactorLoader"><div class="reactorOrbit orbitA"></div><div class="reactorOrbit orbitB"></div><div class="reactorCore"><i></i></div><div class="reactorTicks"></div></div>
+  <div class="loaderTitle">MARK <b>85</b> · SYSTEM INITIALIZATION</div>
+  <div class="loaderSub" id="loadtext">ESTABLISHING SECURE LINK</div>
+  <div class="bootProgress"><i id="loadbar"></i></div>
+  <div class="bootFoot"><span>J.A.R.V.I.S. CORE</span><span>PLEASE STAND BY</span></div>
+  <div id="errors" aria-live="polite"></div>
+ </div>
+</div>
 <div id="mainmenu">
  <div class="databaseTop"><span>STARK INDUSTRIES</span><span>MARK 85 / SYSTEM DATABASE</span><span>LEVEL 01&nbsp;&nbsp; CREDITS 000</span></div>
  <div class="databaseLayout">
@@ -115,5 +197,5 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
  document.addEventListener('touchmove',function(e){e.preventDefault()},{passive:false});
 })();
 </script>
-<script type="module" src="./game.js?v=m39"></script>
+<script type="module" src="./game.js?v=m41"></script>
 </body></html>
