@@ -967,10 +967,11 @@ class RepulsorSystem {
     }
     return true;
   }
-  update(dt, regenBlocked) {
+  update(dt, regenBlocked, mission = null, hud = null) {
     if (!regenBlocked) this.energy = Math.min(100, this.energy + dt * 6);
     for (let i = this.shots.length - 1; i >= 0; i--) {
       const s = this.shots[i]; s.m.position.addScaledVector(s.v, dt);
+      if (mission && mission.hit(s.m.position, hud)) s.life = 0;
       if ((s.life -= dt) <= 0) { this.scene.remove(s.m); this.pool.push(s.m); this.shots.splice(i, 1); }
     }
   }
@@ -1024,6 +1025,7 @@ class HUD {
     $('fly').addEventListener('click', () => this.handlers.fly && this.handlers.fly());
     $('land').addEventListener('click', () => this.handlers.land && this.handlers.land());
     $('fire').addEventListener('click', () => this.handlers.fire && this.handlers.fire());
+    $('cine').addEventListener('click', () => this.handlers.cine && this.handlers.cine());
     this._hold('boost', 'boost', true); this._hold('up', 'up', 1); this._hold('down', 'down', 1);
   }
 }
@@ -1188,6 +1190,43 @@ class TrafficSystem {
   }
 }
 
+
+class CinematicDirector {
+ constructor(camera,hero){this.camera=camera;this.hero=hero;this.enabled=true;this.mode='INTRO';this.time=0;this.duration=6.5;this.tmp=new THREE.Vector3();}
+ trigger(mode,duration=1.8){this.mode=mode;this.time=0;this.duration=duration;this.enabled=true;}
+ toggle(){this.enabled=!this.enabled;this.mode=this.enabled?'FOLLOW':'MANUAL';return this.enabled;}
+ update(dt,move){
+  if(!this.enabled)return;this.time+=dt;
+  const h=this.hero.root.position,yaw=this.hero.root.rotation.y;
+  const f=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)),r=new THREE.Vector3(f.z,0,-f.x);
+  const p=this.tmp,target=new THREE.Vector3(h.x,h.y+1.1,h.z);
+  if(this.mode==='INTRO'){
+   const t=THREE.MathUtils.clamp(this.time/this.duration,0,1),e=t*t*(3-2*t);
+   p.set(h.x+1.5,h.y+1.9,h.z+2.4).lerp(new THREE.Vector3(h.x-f.x*9+3,h.y+4.8,h.z-f.z*9+11),e);
+   if(t>=1){this.mode='FOLLOW';this.time=0;}
+  }else if(this.mode==='TAKEOFF'||this.mode==='BOOST'||this.mode==='LANDING'){
+   const t=THREE.MathUtils.clamp(this.time/this.duration,0,1);
+   const d=this.mode==='BOOST'?15: this.mode==='LANDING'?8:7;
+   p.set(h.x-f.x*(d*t+3)+r.x*(this.mode==='LANDING'?5:3),h.y+2+(1-t)*(this.mode==='LANDING'?3:1),h.z-f.z*(d*t+3)+r.z*(this.mode==='LANDING'?5:3));
+   if(t>=1){this.mode='FOLLOW';this.time=0;}
+  }else{
+   const d=move.mode===MODE.FLY?(move.speed>35?13:8):6;
+   p.set(h.x-f.x*d+r.x*2.2,h.y+(move.mode===MODE.FLY?3.4:2.1),h.z-f.z*d+r.z*2.2);
+  }
+  this.camera.position.lerp(p,Math.min(1,dt*3.8));this.camera.lookAt(target);
+  this.camera.fov=THREE.MathUtils.damp(this.camera.fov,this.mode==='INTRO'?42:(this.mode==='BOOST'?78:58),2.8,dt);this.camera.updateProjectionMatrix();
+ }
+}
+class StoryMission {
+ constructor(scene){this.targets=[];this.complete=false;this.group=new THREE.Group();scene.add(this.group);
+  const core=new THREE.MeshStandardMaterial({color:0x263746,metalness:.8,roughness:.3}),red=new THREE.MeshBasicMaterial({color:0xff633f});
+  const body=new THREE.SphereGeometry(.62,10,8),wing=new THREE.BoxGeometry(2.2,.22,.55),eye=new THREE.SphereGeometry(.18,8,6);
+  for(let i=0;i<3;i++){const root=new THREE.Group();root.add(new THREE.Mesh(body,core));root.add(new THREE.Mesh(wing,core));const e=new THREE.Mesh(eye,red);e.position.z=-.52;root.add(e);root.position.set((i-1)*34,32+i*8,-155-i*24);this.group.add(root);this.targets.push({root,alive:true,phase:i*2});}
+ }
+ hit(point,hud){let found=null,dmin=5.5;for(const t of this.targets)if(t.alive){const d=t.root.position.distanceTo(point);if(d<dmin){found=t;dmin=d;}}if(!found)return false;found.alive=false;found.root.visible=false;const n=this.targets.filter(t=>t.alive).length;if(hud)hud.toast(n?'HOSTILE DRONE DISABLED · '+(3-n)+'/3':'MISSION COMPLETE — SECTOR SECURE');if(!n)this.complete=true;return true;}
+ update(dt,hud){for(const t of this.targets)if(t.alive){t.phase+=dt;t.root.position.y+=Math.sin(t.phase*1.5)*dt*1.2;t.root.rotation.y+=dt*.5;}const el=document.getElementById('mission');if(el)el.textContent=this.complete?'OBJECTIVE COMPLETE · SECTOR SECURE':'PROTOCOL 01 · NEUTRALIZE HOSTILE DRONES · '+(3-this.targets.filter(t=>t.alive).length)+'/3';}
+}
+
 // ===== main.js =====
 
 const hud = new HUD();
@@ -1203,6 +1242,8 @@ async function boot() {
   const rep = new RepulsorSystem(sm.scene);
   const rings = new RingCourse(sm.scene, city);
   const wind = new WindLines(sm.scene);
+  const cine = new CinematicDirector(sm.camera, hero);
+  const mission = new StoryMission(sm.scene);
   const traffic = new TrafficSystem(sm.scene, perf);
   cam.attach(sm.renderer.domElement);
   sm.scene.add(hero.root);
@@ -1228,8 +1269,10 @@ async function boot() {
   hud.setFlightUI(false);
   hud.toast(heroOk && cityOk ? "MARK 85 ONLINE" : 'DEGRADED MODE — SEE ERRORS');
 
-  hud.on('fly', () => { if (move.takeoff()) { hud.setFlightUI(true); cam.bump(0.05); hud.toast('TAKEOFF — THRUSTERS ENGAGED'); } });
-  hud.on('land', () => { if (move.land()) hud.toast('LANDING'); });
+  hud.on('fly', () => { if (move.takeoff()) { hud.setFlightUI(true); cam.bump(0.05); cine.trigger('TAKEOFF', 1.7); hud.toast('TAKEOFF — THRUSTERS ENGAGED'); } });
+  hud.on('land', () => { if (move.land()) { cine.trigger('LANDING', 2.0); hud.toast('LANDING'); } });
+  hud.on('cine', () => { const on=cine.toggle(); hud.toast(on?'CINEMATIC CAMERA':'MANUAL CAMERA'); });
+  hud.on('cine', () => { const on=cine.toggle(); hud.toast(on?'CINEMATIC CAMERA':'MANUAL CAMERA'); });
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   hud.on('fire', () => {
     if (!move.flying) return;
@@ -1247,6 +1290,7 @@ async function boot() {
     move.update(dt, inp, cam.yaw, city);
     if (move.landed) { move.landed = false; hud.setFlightUI(false); hud.toast('LANDED — WALK MODE'); cam.bump(0.06); }
     if (move.hitLimit) hud.toast('EDGE OF THE MAP');
+    if (inp.boost && !cine.boostWasOn) cine.trigger('BOOST',1.25); cine.boostWasOn=inp.boost;
     rings.update(dt, move.pos, rep, hud, move.flying);
     wind.update(dt, move.pos, move.vel, move.flying && move.speed > 20, sm.camera.position);
     hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading;
@@ -1254,10 +1298,10 @@ async function boot() {
     hero.update(dt, move.flying ? 1 : 0, move.speed, inp.boost, move.mode, move.vel.y, inp.hover);
     city.update(move.pos);
     traffic.update(dt, move.pos);
-    rep.update(dt, inp.boost); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
-    cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed });
+    rep.update(dt, inp.boost, mission, hud); mission.update(dt, hud); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
+    cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed }); cine.update(dt, move);
     hud.readout(move.mode, move.pos.y, move.speed * 3.6, rep.energy);
     sm.render(move.pos, { speed: move.speed, boost: inp.boost });
   })();
 }
-boot().catch(e => { console.error(e); hud.setLoading('STARTUP ERROR: ' + (e.message || e), 100); hud.logError(String(e.stack || e).split('\n')[0]); });
+boot().catch(e => { console.error(e); hud.setLoading('STARTUP ERROR: ' + (e.message || e), 100); hud.logError(String(e.stack || e).split('\\n')[0]); });
