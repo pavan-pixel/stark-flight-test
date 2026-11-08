@@ -755,7 +755,9 @@ class NYCWorld {
   // Query the authored NYC FBX instead of the hidden procedural city's grid.
   surfaceAt(x,z,currentY=0){
     if(!this.ready || !this.meshes?.length) return this.groundY;
-    const startY=Math.max(currentY+3, currentY<5?8:currentY+80);
+    // Always cast from above the complete authored world. Starting at playerY+8
+    // misses streets when the player has spawned beneath a misaligned FBX.
+    const startY=Math.max(this.bounds.max.y+20,currentY+80,100);
     this.raycaster.set(new THREE.Vector3(x,startY,z),this.rayDown);
     this.raycaster.near=0; this.raycaster.far=Math.max(20,startY-this.bounds.min.y+5);
     const hits=this.raycaster.intersectObjects(this.meshes,false);
@@ -1585,7 +1587,7 @@ async function boot() {
   hud.setLoading(degraded ? 'CORE SYSTEMS READY · LIMITED ASSETS' : 'SYSTEMS ONLINE · READY FOR DEPLOYMENT', 100);
   setTimeout(() => hud.hideLoading(), 900);
   // Start grounded in WALK mode. Flight begins only when the player presses FLY.
-  move.pos.y = nycOk ? nycWorld.groundY : city.surfaceAt(move.pos.x, move.pos.z);
+  move.pos.y = nycOk ? nycWorld.surfaceAt(move.pos.x, move.pos.z, nycWorld.bounds.max.y) : city.surfaceAt(move.pos.x, move.pos.z);
   move.mode = MODE.WALK;
   hud.setFlightUI(false);
   hud.toast(heroOk && cityOk ? "MARK 85 ONLINE" : 'DEGRADED MODE — SEE ERRORS');
@@ -1610,7 +1612,7 @@ async function boot() {
     if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(v[1]); u.rate = 0.94; u.pitch = 0.88; window.speechSynthesis.speak(u); }
   }));
   document.querySelectorAll('.missionCard[data-mission]').forEach(card=>card.addEventListener('click',()=>{const value=card.dataset.mission;const select=document.getElementById('missionSelect');if(select)select.value=value;document.querySelectorAll('.missionCard').forEach(c=>c.classList.toggle('active',c===card));}));
-  hud.on('start', () => { const selected=document.getElementById('missionSelect')?.value||'city'; missionEnv.setMission(selected); mission.build(selected); if(selected==='city'&&nycOk){nycWorld.activate();move.pos.set(0,nycWorld.groundY,0);}else{nycWorld.group.visible=false;city.group.visible=selected==='city';move.pos.copy(missionEnv.spawn);if(selected==='city')hud.toast('NYC ASSET UNAVAILABLE · PROCEDURAL CITY MODE');} move.vel.set(0,0,0); move.heading=0; move.mode=MODE.WALK; gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); hud.setFlightUI(false); cine.trigger('INTRO', 2.4); });
+  hud.on('start', () => { const selected=document.getElementById('missionSelect')?.value||'city'; missionEnv.setMission(selected); mission.build(selected); if(selected==='city'&&nycOk){nycWorld.activate();move.pos.set(0,nycWorld.surfaceAt(0,0,nycWorld.bounds.max.y),0);}else{nycWorld.group.visible=false;city.group.visible=selected==='city';move.pos.copy(missionEnv.spawn);if(selected==='city')hud.toast('NYC ASSET UNAVAILABLE · PROCEDURAL CITY MODE');} move.vel.set(0,0,0); move.heading=0; move.mode=MODE.WALK; gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); hud.setFlightUI(false); cine.trigger('INTRO', 2.4); });
 
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   let cameraMode='THIRD', lockedTarget=null;
