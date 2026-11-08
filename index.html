@@ -403,6 +403,57 @@ body>canvas{position:fixed;inset:0;z-index:0}
  .gameMenuActions .menuBtn{min-height:44px}
 }
 
+
+/* STARK MOBILE GAMEPAD — circular directional pad + glass action cluster */
+#ui #gameTopActions{position:absolute;top:max(12px,env(safe-area-inset-top));left:max(12px,env(safe-area-inset-left));display:flex;gap:10px;z-index:14;pointer-events:auto}
+#ui .hudIconBtn{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;padding:0;border:1px solid #d8f7ff88;color:#f0fcff;background:radial-gradient(circle at 32% 24%,#29485dcc,#071321ed 72%);box-shadow:0 5px 22px #0008,inset 0 1px #ffffff30,0 0 18px #4bdfff22;backdrop-filter:blur(14px);font:700 21px/1 system-ui;touch-action:manipulation}
+#ui .hudIconBtn:active{transform:scale(.94);border-color:#d8fbff;box-shadow:0 0 22px #70eaff77}
+#ui #settingsButton{position:absolute;top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));z-index:14}
+#ui #minimapWrap{top:max(68px,calc(env(safe-area-inset-top) + 54px));right:max(14px,env(safe-area-inset-right));width:clamp(92px,12vw,132px);height:clamp(92px,12vw,132px)}
+#ui .bottom{left:max(18px,env(safe-area-inset-left));right:max(18px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));align-items:flex-end}
+#ui .joystick{width:clamp(126px,16vw,170px);height:clamp(126px,16vw,170px);border:2px solid #d7f5ffb0;background:radial-gradient(circle,#243747ee 0 35%,#0b1725f2 68%,#020812f5 100%);box-shadow:inset 0 0 26px #9beaff20,0 8px 28px #0009,0 0 18px #83eaff33}
+#ui .stick{width:clamp(48px,5vw,62px);height:clamp(48px,5vw,62px);left:calc(50% - clamp(24px,2.5vw,31px));top:calc(50% - clamp(24px,2.5vw,31px));border:2px solid #e9fcff;background:radial-gradient(circle at 35% 27%,#eaffff,#83d9ef 36%,#274d68 83%);box-shadow:0 0 20px #7beaff99,inset 0 0 12px #ffffff88;will-change:transform}
+#ui .joyArrow{position:absolute;color:#e8f9ffb8;font:700 clamp(16px,2vw,22px)/1 system-ui;pointer-events:none;text-shadow:0 1px 8px #000}
+#ui .joyArrow.up{top:7px;left:50%;transform:translateX(-50%)}
+#ui .joyArrow.down{bottom:7px;left:50%;transform:translateX(-50%)}
+#ui .joyArrow.left{left:9px;top:50%;transform:translateY(-50%)}
+#ui .joyArrow.right{right:9px;top:50%;transform:translateY(-50%)}
+#ui .controls{display:grid;grid-template-columns:repeat(3,clamp(56px,6.3vw,72px));grid-template-rows:repeat(3,clamp(56px,6.3vw,72px));gap:clamp(6px,.8vw,10px);max-width:none;align-items:center;justify-content:center}
+#ui .btn{width:100%;height:100%;min-width:0;aspect-ratio:1;border-radius:50%;padding:4px;gap:2px;border:1.5px solid #d7f7ff99;background:radial-gradient(circle at 32% 22%,#29485ddd,#081522f5 72%);box-shadow:0 7px 22px #0009,inset 0 1px #ffffff28,0 0 18px #53dfff20;backdrop-filter:blur(15px)}
+#ui .btn .glyph{font-size:clamp(19px,2.4vw,27px);line-height:1.05}
+#ui .btn .btnLabel{font-size:clamp(6px,.7vw,8px);line-height:1.05;letter-spacing:.1em}
+#ui .btn.gold{border-color:#f0ce8a;color:#ffe6b6;background:radial-gradient(circle at 30% 20%,#67502ddd,#171b23f5)}
+#ui .btn.red{border-color:#ff9a91;color:#ffe0dc;background:radial-gradient(circle at 30% 20%,#63343add,#1c1018f5)}
+#ui .btn:active,#ui .btn.on{transform:scale(.94);border-color:#efffff;background:radial-gradient(circle,#267b99,#092237);box-shadow:0 0 25px #63e6ff88,inset 0 0 12px #d8fbff33}
+#ui:not(.isFlying) #view{grid-area:1/1}
+#ui:not(.isFlying) #fly{grid-area:1/2}
+#ui:not(.isFlying) #lock{grid-area:1/3}
+#ui:not(.isFlying) #fire{grid-area:2/1}
+#ui:not(.isFlying) #attack{grid-area:2/2}
+#ui:not(.isFlying) #kick{grid-area:2/3}
+#ui:not(.isFlying) #run{grid-area:3/1}
+#ui.isFlying #up{grid-area:1/1}
+#ui.isFlying #boost{grid-area:1/2}
+#ui.isFlying #down{grid-area:1/3}
+#ui.isFlying #fire{grid-area:2/1}
+#ui.isFlying #hover{grid-area:2/2}
+#ui.isFlying #lock{grid-area:2/3}
+#ui.isFlying #land{grid-area:3/1}
+#ui.isFlying #view{grid-area:3/3}
+#ui .pauseShade{position:absolute;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:#020711b8;backdrop-filter:blur(9px);pointer-events:auto}
+#ui .pauseShade.show{display:flex}
+#ui .pauseCard{width:min(320px,82vw);padding:22px;border:1px solid #8cecff88;background:linear-gradient(145deg,#10283beF,#040c16f5);box-shadow:0 18px 60px #000b;color:#eafaff;text-align:center}
+#ui .pauseCard h2{font:700 22px 'Barlow Condensed',sans-serif;letter-spacing:.18em;margin:0 0 8px}
+#ui .pauseCard p{font:10px 'Rajdhani',sans-serif;letter-spacing:.12em;color:#9ebdce}
+#ui .pauseCard button{margin:7px 4px 0;min-height:42px;padding:0 18px;border:1px solid #8cecff88;background:#0c2a3d;color:#e8fbff;font:700 12px 'Rajdhani',sans-serif;letter-spacing:.14em}
+@media(max-height:500px) and (orientation:landscape){
+ #ui .hudIconBtn{width:40px;height:40px;font-size:18px}
+ #ui .joystick{width:clamp(108px,18vh,138px);height:clamp(108px,18vh,138px)}
+ #ui .controls{grid-template-columns:repeat(3,clamp(48px,12vh,60px));grid-template-rows:repeat(3,clamp(48px,12vh,60px));gap:5px}
+ #ui .btn .glyph{font-size:19px}
+ #ui .btn .btnLabel{font-size:6px}
+ #ui #minimapWrap{width:clamp(78px,18vh,98px);height:clamp(78px,18vh,98px);top:56px}
+}
 </style>
 </head>
 <body>
@@ -448,8 +499,8 @@ body>canvas{position:fixed;inset:0;z-index:0}
 </div><div id="tutorial"><div class="tutorialCard"><div class="jarvisHeader"><span class="jarvisDot"></span> J.A.R.V.I.S. / FLIGHT BRIEFING</div><h2>FLIGHT CONTROL TRAINING</h2><p><b>Movement:</b> Use the left control pad to walk and steer.</p><p><b>Camera:</b> Drag the open screen area to look around.</p><p><b>Takeoff:</b> Select FLY. Use UP and DOWN to control altitude.</p><p><b>Flight:</b> Hold BOOST for acceleration. Use FIRE to discharge both repulsors.</p><p><b>Landing:</b> Select LAND when you are near a safe surface.</p><p class="jarvisQuote">“I will monitor your flight systems, sir. Try to avoid the buildings.”</p><button class="menuBtn primary" id="closeTutorial">ACKNOWLEDGED</button></div></div><div id="ui" class="gameHidden">
  <div class="top"><div><div class="brand">STARK INDUSTRIES</div><div class="sub">MARK 85 // OPEN CITY BUILD // M21</div><div class="sub" id="assetstat"></div></div>
   <div class="readout">MODE <b id="mode">WALK</b><br>ALT <b id="alt">GROUND</b><br>SPD <b id="spd">0</b><br>NRG <b id="nrg">100</b></div></div>
- <div id="toast"></div><div class="cameraHint">DRAG OPEN SCREEN TO LOOK · PINCH TO ZOOM</div><div id="mission">OPERATION · HOSTILES 0/6</div><div id="helmetHud"><div class="helmetTop"><span>J.A.R.V.I.S. / TACTICAL LINK</span><span id="healthValue">100%</span></div><div class="helmetReticle">+</div><div class="helmetBottom"><span>ARC REACTOR <b id="helmetEnergy">100%</b></span><span>THREAT SCAN <b id="targetStatus">STANDBY</b></span></div></div><div id="minimapWrap"><canvas id="minimap" width="160" height="160"></canvas></div>
- <div class="bottom"><div><div class="joystick" id="joy"><div class="stick" id="stick"></div></div></div>
+ <div id="gameTopActions"><button class="hudIconBtn" id="pauseGame" aria-label="Pause game">Ⅱ</button></div><button class="hudIconBtn" id="settingsButton" aria-label="Settings">⚙</button><div class="pauseShade" id="pauseOverlay"><div class="pauseCard"><h2>GAME PAUSED</h2><p>MARK 85 SYSTEMS ON STANDBY</p><button id="resumeGame">RESUME</button></div></div><div class="pauseShade" id="settingsOverlay"><div class="pauseCard"><h2>CONTROL SETTINGS</h2><p>LEFT PAD · MOVE / STEER</p><p>RIGHT ACTIONS · COMBAT / FLIGHT</p><p>DRAG OPEN SCREEN · CAMERA</p><button id="cameraReset">RESET CAMERA</button><button id="closeSettings">CLOSE</button></div></div><div id="toast"></div><div class="cameraHint">DRAG OPEN SCREEN TO LOOK · PINCH TO ZOOM</div><div id="mission">OPERATION · HOSTILES 0/6</div><div id="helmetHud"><div class="helmetTop"><span>J.A.R.V.I.S. / TACTICAL LINK</span><span id="healthValue">100%</span></div><div class="helmetReticle">+</div><div class="helmetBottom"><span>ARC REACTOR <b id="helmetEnergy">100%</b></span><span>THREAT SCAN <b id="targetStatus">STANDBY</b></span></div></div><div id="minimapWrap"><canvas id="minimap" width="160" height="160"></canvas></div>
+ <div class="bottom"><div><div class="joystick" id="joy" aria-label="Directional movement"><span class="joyArrow up">⌃</span><span class="joyArrow down">⌄</span><span class="joyArrow left">‹</span><span class="joyArrow right">›</span><div class="stick" id="stick"></div></div></div>
  <div class="controls">
   <button class="btn" id="run"><span class="glyph">⌁</span><span class="btnLabel">RUN</span></button><button class="btn" id="attack" aria-label="Punch" hidden><span class="glyph">✊</span><span class="btnLabel">PUNCH</span></button><button class="btn" id="kick" aria-label="Kick" hidden><span class="glyph">➤</span><span class="btnLabel">KICK</span></button><button class="btn gold" id="fly"><span class="glyph">✧</span><span class="btnLabel">FLY</span></button>
   <button class="btn" id="up" hidden><span class="glyph">↑</span><span class="btnLabel">UP</span></button><button class="btn" id="down" hidden><span class="glyph">↓</span><span class="btnLabel">DOWN</span></button>
