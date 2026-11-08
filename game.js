@@ -633,9 +633,8 @@ class NYCWorld {
     progress('LOADING NEW YORK WORLD',5);
     const root=await a.loadFBX('NewYork.fbx');
 
-    // The supplied FBX is authored with its vertical axis inverted for Three.js.
-    // Flip the complete world 180 degrees around X before calculating its ground plane.
-    root.rotation.x=Math.PI;
+    // The source city is Z-up; convert it to Three.js Y-up before bounds and ground alignment.
+    root.rotation.x=-Math.PI/2;
     root.updateMatrixWorld(true);
     this.bounds.setFromObject(root);
     const size=this.bounds.getSize(new THREE.Vector3());
