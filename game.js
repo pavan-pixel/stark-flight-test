@@ -665,6 +665,7 @@ class IronMan {
     this.root.add(this.tilt);
     this.model = null; this.bones = {}; this.glows = []; this.height = 1.9; this.fallback = false;
     this.flying = 0;                 // 0..1 thruster intensity
+    this.attackState = null; this.attackTime = 0; this.attackDuration = 0.42;
   }
 
   async load(progress = () => {}) {
@@ -685,7 +686,7 @@ class IronMan {
     await this._loadAnimations(obj);
     progress('APPLYING SUIT MATERIALS', 60);
     obj.traverse(o => {
-      if (o.isBone) { const n = key(o.name); for (const [id, re] of [['lHand', /lefthand$/], ['rHand', /righthand$/], ['lFoot', /leftfoot$/], ['rFoot', /rightfoot$/], ['chest', /spine2$/], ['head', /head$/]]) if (re.test(n)) this.bones[id] = o; }
+      if (o.isBone) { const n = key(o.name); for (const [id, re] of [['lHand', /lefthand$/], ['rHand', /righthand$/], ['lFoot', /leftfoot$/], ['rFoot', /rightfoot$/], ['chest', /spine2$/], ['head', /head$/], ['lArm', /leftarm$/], ['rArm', /rightarm$/], ['lLeg', /leftupleg$/], ['rLeg', /rightupleg$/]]) if (re.test(n)) this.bones[id] = o; }
     });
     await this._applyMaterials(obj);
     this._buildGlows();
@@ -778,6 +779,7 @@ class IronMan {
     if (!this.actions.idle) this.assets.onError('ANIM: idle clip unavailable; suit will use bind pose');
     this.play('idle');
   }
+  attack(type='punch') { this.attackState=type; this.attackTime=0; this.firePulse=.22; }
   play(name, oneShot = false) {
     const next = this.actions && this.actions[name];
     if (!next || next === this.current) return;
@@ -826,6 +828,7 @@ class IronMan {
       this.play(desired, oneShot);
       this.previousMode = mode;
     }
+    if(this.attackState){this.attackTime+=dt;const t=Math.min(1,this.attackTime/this.attackDuration),wave=Math.sin(t*Math.PI);const arm=this.bones[this.attackState==='punch'?'rArm':'lArm'];const leg=this.bones[this.attackState==='kick'?'rLeg':'lLeg'];if(arm)arm.rotation.z+=(this.attackState==='punch'?-0.95:0.35)*wave*dt*18;if(this.attackState==='kick'&&leg)leg.rotation.x+=0.9*wave*dt*16;if(t>=1)this.attackState=null;}
     const p = new THREE.Vector3();
     this.root.updateMatrixWorld(true);
     for (const s of this.glows) {
@@ -997,8 +1000,9 @@ class HUD {
   hideLoading() { $('loading').classList.add('hide'); }
   toast(t) { const e = $('toast'); e.textContent = t; e.style.opacity = 1; clearTimeout(this._t); this._t = setTimeout(() => e.style.opacity = 0, 1300); }
   setFlightUI(flying) {
-    for (const id of ['fly', 'run']) $(id).hidden = flying;
-    for (const id of ['land', 'hover', 'boost', 'fire', 'up', 'down']) $(id).hidden = !flying;
+    for (const id of ['fly', 'run', 'attack', 'kick']) $(id).hidden = flying;
+    for (const id of ['land', 'hover', 'boost', 'up', 'down']) $(id).hidden = !flying;
+    $('fire').hidden = false; $('view').hidden = false; $('lock').hidden = false;
   }
   readout(mode, alt, speedKmh, energy) {
     $('mode').textContent = mode; $('alt').textContent = alt < 0.5 ? 'GROUND' : Math.round(alt) + ' M';
@@ -1026,6 +1030,10 @@ class HUD {
     $('fly').addEventListener('click', () => this.handlers.fly && this.handlers.fly());
     $('land').addEventListener('click', () => this.handlers.land && this.handlers.land());
     $('fire').addEventListener('click', () => this.handlers.fire && this.handlers.fire());
+    $('attack').addEventListener('click', () => this.handlers.attack && this.handlers.attack('punch'));
+    $('kick').addEventListener('click', () => this.handlers.attack && this.handlers.attack('kick'));
+    $('view').addEventListener('click', () => this.handlers.view && this.handlers.view());
+    $('lock').addEventListener('click', () => this.handlers.lock && this.handlers.lock());
     $('startGame').addEventListener('click', () => this.handlers.start && this.handlers.start());
     $('openTutorial').addEventListener('click', () => { $('tutorial').classList.add('show'); if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance('Sir, use the left control pad to move. Drag the screen to look around. Select fly to take off. Use up and down to control altitude. Boost for speed, fire to discharge the repulsors, and land near a safe surface.'); u.rate = 0.94; u.pitch = 0.88; window.speechSynthesis.speak(u); } });
     $('closeTutorial').addEventListener('click', () => $('tutorial').classList.remove('show'));
@@ -1311,9 +1319,14 @@ async function boot() {
   const rings = new RingCourse(sm.scene, city);
   const wind = new WindLines(sm.scene);
   const cine = new CinematicDirector(sm.camera, hero);
-  const mission = new StoryMission(sm.scene);
+  const missionEnv = new MissionEnvironment(sm.scene, city);
+  const mission = new CombatMission(sm.scene, hud);
   const traffic = new TrafficSystem(sm.scene, perf);
   cam.attach(sm.renderer.domElement);
+  const citySurfaceAt = city.surfaceAt.bind(city), cityResolveCircle = city.resolveCircle.bind(city);
+  city.surfaceAt = (x,z) => missionEnv.surfaceAt(x,z,citySurfaceAt);
+  city.resolveCircle = (pos,r,y) => missionEnv.active==='city' ? cityResolveCircle(pos,r,y) : missionEnv.resolveCircle(pos,r,y);
+  missionEnv.setMission('carrier'); mission.build('carrier'); move.pos.copy(missionEnv.spawn);
   sm.scene.add(hero.root);
   perf.onTierChange = t => { sm.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio)); city.setRadii(t.nearRadius, t.farRadius); hud.toast('QUALITY: ' + t.name.toUpperCase()); };
 
@@ -1357,12 +1370,16 @@ async function boot() {
     document.getElementById('jarvisTag').textContent = 'SYSTEM BRIEFING / ' + btn.dataset.topic.toUpperCase();
     if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(v[1]); u.rate = 0.94; u.pitch = 0.88; window.speechSynthesis.speak(u); }
   }));
-  hud.on('start', () => { gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); cine.trigger('INTRO', 2.4); });
+  hud.on('start', () => { const selected=document.getElementById('missionSelect')?.value||'carrier'; missionEnv.setMission(selected); mission.build(selected); move.pos.copy(missionEnv.spawn); move.vel.set(0,0,0); move.heading=0; move.mode=MODE.WALK; gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); hud.setFlightUI(false); cine.trigger('INTRO', 2.4); });
 
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
+  let cameraMode='THIRD', lockedTarget=null;
+  hud.on('attack', type => { if(!gameStarted || move.flying)return; mission.melee(move.pos,move.heading,type,hero,hud); cam.bump(type==='kick'?.13:.08); });
+  hud.on('view', () => { cameraMode=cameraMode==='THIRD'?'FIRST':'THIRD'; document.getElementById('view').textContent=cameraMode==='FIRST'?'HELMET':'3RD PERSON'; document.getElementById('helmetHud').classList.toggle('active',cameraMode==='FIRST'); hud.toast(cameraMode==='FIRST'?'HELMET VIEW':'THIRD-PERSON VIEW'); });
+  hud.on('lock', () => { lockedTarget=mission.targets.find(t=>t.alive)||null; hud.toast(lockedTarget?'TARGET ACQUIRED':'NO HOSTILE SIGNAL'); });
   hud.on('fire', () => {
-    if (!gameStarted || !move.flying) return;
-    dir.set(-Math.sin(cam.yaw), -Math.sin(cam.pitch) * 0.3, -Math.cos(cam.yaw)).normalize();
+    if (!gameStarted) return;
+    dir.set(-Math.sin(move.heading + cam.yaw), -Math.sin(cam.pitch) * 0.3, -Math.cos(move.heading + cam.yaw)).normalize();
     const o = [hero.worldPosOf('lHand', new THREE.Vector3()), hero.worldPosOf('rHand', new THREE.Vector3())];
     if (rep.fire(o, dir)) { cam.bump(0.08); hero.firePulse = 0.18; }
   });
@@ -1386,7 +1403,7 @@ async function boot() {
     city.update(move.pos);
     traffic.update(dt, move.pos);
     rep.update(dt, inp.boost, mission, hud); mission.update(dt, hud); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
-    if (cine.enabled) cine.update(dt, move); else cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed });
+    if (cine.enabled) cine.update(dt, move); else if(cameraMode==='FIRST'){const eye=hero.root.position.clone().add(new THREE.Vector3(0,1.62,0));sm.camera.position.copy(eye);const a=move.heading+cam.yaw;sm.camera.lookAt(eye.x-Math.sin(a)*30,eye.y-Math.sin(cam.pitch)*8,eye.z-Math.cos(a)*30);sm.camera.fov=THREE.MathUtils.damp(sm.camera.fov,move.flying?76:68,5,dt);sm.camera.updateProjectionMatrix();}else cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed });
     hud.readout(move.mode, move.pos.y, move.speed * 3.6, rep.energy); drawMiniMap(move.pos, move.heading, mission);
     sm.render(move.pos, { speed: move.speed, boost: inp.boost });
   })();
