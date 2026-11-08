@@ -740,7 +740,7 @@ class MovementController {
   }
   takeoff() { if (this.mode === MODE.WALK) { this.mode = MODE.TAKEOFF; this.targetAlt = 70; this.takeoffT = 0; return true; } return false; }
   land() { if (this.mode === MODE.FLY || this.mode === MODE.TAKEOFF) { this.mode = MODE.LANDING; this.targetAlt = 0; return true; } return false; }
-  // M1: the game starts in the air. LAND puts Mark 85 on the nearest surface (street or rooftop).
+  // Walk-first startup: LAND puts Mark 85 on the nearest surface (street or rooftop).
   startFlying() { this.mode = MODE.FLY; this.pos.y = 70; this.targetAlt = 70; this.landed = false; }
   get flying() { return this.mode !== MODE.WALK; }
 
@@ -1027,8 +1027,10 @@ async function boot() {
   assets.release();
   hud.setLoading(failures.length ? `STARTED WITH ${failures.length} ASSET ERROR(S)` : 'ALL SYSTEMS ONLINE', 100);
   setTimeout(() => hud.hideLoading(), failures.length ? 2500 : 500);
-  // M1: start in the air; M3: rings only once the city exists.
-  move.startFlying(); hud.setFlightUI(true);
+  // Start grounded in WALK mode. Flight begins only when the player presses FLY.
+  move.pos.y = city.surfaceAt(move.pos.x, move.pos.z);
+  move.mode = MODE.WALK;
+  hud.setFlightUI(false);
   hud.toast(heroOk && cityOk ? "MARK 85 ONLINE" : 'DEGRADED MODE — SEE ERRORS');
 
   hud.on('fly', () => { if (move.takeoff()) { hud.setFlightUI(true); cam.bump(0.05); hud.toast('TAKEOFF — THRUSTERS ENGAGED'); } });
