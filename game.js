@@ -1029,7 +1029,6 @@ class HUD {
     $('startGame').addEventListener('click', () => this.handlers.start && this.handlers.start());
     $('openTutorial').addEventListener('click', () => { $('tutorial').classList.add('show'); if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance('Sir, use the left control pad to move. Drag the screen to look around. Select fly to take off. Use up and down to control altitude. Boost for speed, fire to discharge the repulsors, and land near a safe surface.'); u.rate = 0.94; u.pitch = 0.88; window.speechSynthesis.speak(u); } });
     $('closeTutorial').addEventListener('click', () => $('tutorial').classList.remove('show'));
-    $('cine').addEventListener('click', () => this.handlers.cine && this.handlers.cine());
     this._hold('boost', 'boost', true); this._hold('up', 'up', 1); this._hold('down', 'down', 1);
   }
 }
