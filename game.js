@@ -1,6 +1,7 @@
 // PROJECT STARK — Milestone 1 bundle (built from src/ modules)
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import JSZip from 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -132,6 +133,10 @@ class AssetManager {
       const o = await new FBXLoader(m).loadAsync(url); this._ok(name); return o;
     } catch (e) { this._fail(name, e); throw e; }
   }
+  async loadEXR(name) {
+    try { const t = await new EXRLoader().loadAsync(await this.url(name)); t.mapping = THREE.EquirectangularReflectionMapping; this._ok(name); return t; }
+    catch (e) { this._fail(name, e); return null; }
+  }
   async loadTexture(name, { srgb = false, repeat = null, anisotropy = 4 } = {}) {
     const key = name + (srgb ? '#s' : ''); if (this.textures.has(key)) return this.textures.get(key);
     try {
@@ -198,6 +203,8 @@ class SceneManager {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     pmrem.dispose();
+    this._environmentTarget = null;
+    this._environmentSource = null;
 
     this.scene.add(new THREE.HemisphereLight(0xcfe4ff, 0x3b4350, 1.1));
     this.sun = new THREE.DirectionalLight(0xfff1d6, 2.6);
@@ -213,7 +220,22 @@ class SceneManager {
     this.sky.renderOrder = -1;
     this.scene.add(this.sky);
 
-    // Soft radial glow used for the sun flare and the boost bloom.
+    setEnvironment(texture) {
+    if (!texture) return false;
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const target = pmrem.fromEquirectangular(texture);
+    pmrem.dispose();
+    if (this._environmentTarget) this._environmentTarget.dispose();
+    if (this._environmentSource && this._environmentSource !== texture) this._environmentSource.dispose();
+    this._environmentTarget = target;
+    this._environmentSource = texture;
+    this.scene.environment = target.texture;
+    this.scene.background = texture;
+    this.sky.visible = false;
+    return true;
+  }
+
+  // Soft radial glow used for the sun flare and the boost bloom.
     this.glowTex = glowTexture();
     this.sunFlare = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xfff1d0, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, fog: false, transparent: true }));
     this.sunFlare.scale.set(1100, 1100, 1); this.sunFlare.renderOrder = 10;
@@ -292,7 +314,7 @@ class CityManager {
   constructor(scene, assets, perf) {
     this.scene = scene; this.assets = assets; this.perf = perf;
     this.group = new THREE.Group(); scene.add(this.group);
-    this.templates = []; this.placements = []; this.colliders = []; this.parks = [];
+    this.templates = []; this.suburbanTemplates = []; this.placements = []; this.colliders = []; this.parks = [];
     this.nearMeshes = []; this.farMesh = null; this.ringCount = 0;
     this.lastUpdate = new THREE.Vector3(1e9, 0, 1e9);
     this.near = perf.tier.nearRadius; this.far = perf.tier.farRadius;
@@ -303,24 +325,36 @@ class CityManager {
     progress('LOADING BUILDING MODELS', 10);
     const names = buildingNames(a);
     if (!names.length) throw new Error('No building_*.gltf models found in any ZIP');
-    const [gb, decalCross, decalYellow] = await Promise.all([
+    const suburbanNames = Array.from({ length: 21 }, (_, i) => `suburban-building-type-${String.fromCharCode(97 + i)}.glb`);
+    const [gb, suburban, treeLarge, treeSmall, decalCross, decalYellow] = await Promise.all([
       Promise.all(names.map(n => a.loadGLTF(n).catch(() => null))),
+      Promise.all(suburbanNames.map(n => a.loadGLTF(n).catch(() => null))),
+      a.loadGLTF('suburban-tree-large.glb').catch(() => null),
+      a.loadGLTF('suburban-tree-small.glb').catch(() => null),
       a.loadGLTF(base + 'Decal_Crosswalk.gltf'), a.loadGLTF(base + 'Decal_DoubleYellow_Straight.gltf'),
     ]);
     progress('PROCESSING CITY GEOMETRY', 55);
     gb.forEach(g => { if (g) this.templates.push(this._template(g.scene)); });
+    suburban.forEach(g => { if (g) { this.templates.push(this._template(g.scene)); this.suburbanTemplates.push(this.templates.length - 1); } });
     if (!this.templates.length) throw new Error('All building models failed to load');
-    const [asphalt, concrete] = await Promise.all([
+    const [asphalt, concrete, detailedAsphalt, asphaltNormal, asphaltRough, detailedConcrete, concreteNormal, concreteRough] = await Promise.all([
       a.loadTexture(base + 'T_Concrete_Asphalt_BaseColor.png', { srgb: true, repeat: 260 }),
       a.loadTexture(base + 'T_Concrete_BaseColor.png', { srgb: true, repeat: 14 }),
+      a.loadTexture('asphalt-color.jpg', { srgb: true, repeat: 260 }),
+      this.perf.tier.normalMaps ? a.loadTexture('asphalt-normal.jpg', { repeat: 260 }) : Promise.resolve(null),
+      a.loadTexture('asphalt-roughness.jpg', { repeat: 260 }),
+      a.loadTexture('concrete-color.jpg', { srgb: true, repeat: 14 }),
+      this.perf.tier.normalMaps ? a.loadTexture('concrete-normal.jpg', { repeat: 14 }) : Promise.resolve(null),
+      a.loadTexture('concrete-roughness.jpg', { repeat: 14 }),
     ]);
     progress('BUILDING STREETS', 70);
     this._generate();
-    this._buildGround(asphalt, concrete);
+    this._buildGround(detailedAsphalt || asphalt, detailedConcrete || concrete, asphaltNormal, asphaltRough, concreteNormal, concreteRough);
     this._buildBuildingInstances();
     this._buildFarAndSkyline();
     this._buildDecals(decalCross.scene, decalYellow.scene);
     this._buildStreetLights();
+    if (treeLarge && treeSmall) this._buildNature(treeLarge.scene, treeSmall.scene);
     this.update(new THREE.Vector3(0, 0, 0), true);
     progress('CITY READY', 100);
   }
@@ -345,7 +379,9 @@ class CityManager {
       const dist = Math.hypot(cx, cz) / (half * PITCH);
       if (r() < 0.08 && dist > 0.15) { this.parks.push({ cx, cz }); continue; }
       for (const qx of [-1, 1]) for (const qz of [-1, 1]) {
-        const ti = Math.floor(r() * this.templates.length), t = this.templates[ti];
+        const useSuburban = this.suburbanTemplates.length && dist > 0.58 && r() < 0.72;
+        const ti = useSuburban ? this.suburbanTemplates[Math.floor(r() * this.suburbanTemplates.length)] : Math.floor(r() * (this.templates.length - this.suburbanTemplates.length));
+        const t = this.templates[ti];
         const faceZ = r() < 0.5;
         const rot = faceZ ? (qz > 0 ? 0 : Math.PI) : (qx > 0 ? Math.PI / 2 : -Math.PI / 2);
         const target = 31 + r() * 5; // fills the block quadrant (31-36 m), so neighbours sit flush
@@ -377,13 +413,40 @@ class CityManager {
     }
   }
 
-  _buildGround(asphalt, concrete) {
+  _buildNature(largeRoot, smallRoot) {
+    const roots = [largeRoot, smallRoot], bounds = roots.map(root => new THREE.Box3().setFromObject(root));
+    const r = rng(64021), count = this.perf.isMobile ? 30 : 62;
+    const addTree = (root, box, x, z, scale) => {
+      const tree = root.clone(true);
+      tree.position.set(x - (box.min.x + box.max.x) * 0.5 * scale, -box.min.y * scale, z - (box.min.z + box.max.z) * 0.5 * scale);
+      tree.scale.setScalar(scale); tree.rotation.y = r() * Math.PI * 2;
+      tree.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; } });
+      this.group.add(tree);
+    };
+    let made = 0;
+    for (const park of this.parks) {
+      for (let i = 0, n = this.perf.isMobile ? 3 : 5; i < n && made < count; i++, made++) {
+        const k = r() < 0.55 ? 0 : 1;
+        addTree(roots[k], bounds[k], park.cx + (r() - 0.5) * 52, park.cz + (r() - 0.5) * 52, (k ? 5.5 : 7.5) * (0.85 + r() * 0.35));
+      }
+    }
+    for (let axis = 0; axis < 2 && made < count; axis++) for (let road = 1; road < GRID && made < count; road++) {
+      for (let along = 0; along < GRID && made < count; along += 2) {
+        const lane = (road - GRID / 2) * PITCH, offset = (along - GRID / 2 + 0.5) * PITCH;
+        const k = r() < 0.7 ? 0 : 1, side = r() < 0.5 ? -1 : 1;
+        addTree(roots[k], bounds[k], axis === 0 ? offset : lane + side * (HALF + 5), axis === 0 ? lane + side * (HALF + 5) : offset, (k ? 4.5 : 6.2) * (0.85 + r() * 0.3));
+        made++;
+      }
+    }
+  }
+
+  _buildGround(asphalt, concrete, asphaltNormal = null, asphaltRough = null, concreteNormal = null, concreteRough = null) {
     const size = GRID * PITCH + 2000;
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(size, size),
-      new THREE.MeshStandardMaterial({ map: asphalt, color: 0xbdbdbd, roughness: 0.95, metalness: 0, envMapIntensity: 0.2 }));
+      new THREE.MeshStandardMaterial({ map: asphalt, normalMap: asphaltNormal, roughnessMap: asphaltRough, color: 0xbdbdbd, roughness: 0.95, metalness: 0, envMapIntensity: 0.2 }));
     ground.rotation.x = -Math.PI / 2; ground.position.y = -0.01; ground.receiveShadow = true; this.group.add(ground);
     const padGeo = new THREE.BoxGeometry(BLOCK, PAD_H, BLOCK); padGeo.translate(0, PAD_H / 2, 0);
-    const pads = new THREE.InstancedMesh(padGeo, new THREE.MeshStandardMaterial({ map: concrete, color: 0xcfcfcf, roughness: 0.9, envMapIntensity: 0.2 }), GRID * GRID);
+    const pads = new THREE.InstancedMesh(padGeo, new THREE.MeshStandardMaterial({ map: concrete, normalMap: concreteNormal, roughnessMap: concreteRough, color: 0xcfcfcf, roughness: 0.9, envMapIntensity: 0.2 }), GRID * GRID);
     const parkKeys = new Set(this.parks.map(p => p.cx + ',' + p.cz));
     let n = 0, pn = 0;
     const parkMesh = new THREE.InstancedMesh(padGeo, new THREE.MeshStandardMaterial({ color: 0x41653d, roughness: 1, envMapIntensity: 0.1 }), Math.max(1, this.parks.length));
@@ -1015,6 +1078,7 @@ class TrafficSystem {
     this.body.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.cabin.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.glass.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.models = [];
     this.items = Array.from({ length: this.count }, (_, i) => ({
       axis: i % 2, road: (i * 3) % 11, lane: i % 4 < 2 ? -4.3 : 4.3,
       dir: i % 4 < 2 ? 1 : -1, offset: ((i * 67) % 1200) - 600,
@@ -1028,6 +1092,24 @@ class TrafficSystem {
     this.body.instanceColor.needsUpdate = true;
     scene.add(this.body, this.cabin, this.glass);
     this.dummy = dummy;
+    this.scene = scene;
+  }
+  async loadModels(assets) {
+    const names = ['sedan', 'suv', 'taxi', 'van', 'police', 'delivery', 'truck', 'ambulance'];
+    const loaded = (await Promise.all(names.map(n => assets.loadGLTF(`vehicle-${n}.glb`).catch(() => null)))).filter(Boolean);
+    if (!loaded.length) return false;
+    const bounds = loaded.map(g => new THREE.Box3().setFromObject(g.scene));
+    for (let i = 0; i < this.count; i++) {
+      const k = i % loaded.length, root = loaded[k].scene.clone(true), box = bounds[k], size = box.getSize(new THREE.Vector3());
+      const scale = 4.2 / Math.max(size.x, size.z, 0.01);
+      root.position.set(-(box.min.x + box.max.x) * 0.5 * scale, -box.min.y * scale, -(box.min.z + box.max.z) * 0.5 * scale);
+      root.scale.setScalar(scale);
+      root.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; } });
+      const holder = new THREE.Group(); holder.add(root); holder.visible = false; holder.userData.yawOffset = size.z > size.x ? Math.PI / 2 : 0;
+      this.models.push(holder); this.scene.add(holder);
+    }
+    this.body.visible = this.cabin.visible = this.glass.visible = false;
+    return true;
   }
   update(dt, focus) {
     const d = this.dummy;
@@ -1042,8 +1124,12 @@ class TrafficSystem {
       const yaw = v.axis === 0 ? (v.dir > 0 ? 0 : Math.PI) : (v.dir > 0 ? -Math.PI / 2 : Math.PI / 2);
       const distance = Math.hypot(x - focus.x, z - focus.z);
       const visible = distance < 520;
-      d.position.set(x, 0, z); d.rotation.set(0, yaw, 0); d.scale.setScalar(visible ? 1 : 0.0001); d.updateMatrix();
-      this.body.setMatrixAt(i, d.matrix); this.cabin.setMatrixAt(i, d.matrix); this.glass.setMatrixAt(i, d.matrix);
+      if (this.models[i]) {
+        const car = this.models[i]; car.visible = visible; car.position.set(x, 0, z); car.rotation.y = yaw + car.userData.yawOffset;
+      } else {
+        d.position.set(x, 0, z); d.rotation.set(0, yaw, 0); d.scale.setScalar(visible ? 1 : 0.0001); d.updateMatrix();
+        this.body.setMatrixAt(i, d.matrix); this.cabin.setMatrixAt(i, d.matrix); this.glass.setMatrixAt(i, d.matrix);
+      }
     }
     this.body.instanceMatrix.needsUpdate = this.cabin.instanceMatrix.needsUpdate = this.glass.instanceMatrix.needsUpdate = true;
   }
@@ -1069,13 +1155,16 @@ async function boot() {
   perf.onTierChange = t => { sm.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio)); city.setRadii(t.nearRadius, t.farRadius); hud.toast('QUALITY: ' + t.name.toUpperCase()); };
 
   hud.setLoading('READING ASSET ARCHIVES', 2);
-  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip', 'kenney_city-kit-commercial_2_1.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
+  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip', 'kenney_city-kit-commercial_2_1.zip', 'stark-environment-pack.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
   // Hero first (playable immediately), city second; either failure is reported and never blocks the loop.
   let heroOk = true, cityOk = true;
   await Promise.all([
     hero.load((t, p) => hud.setLoading(t, p * 0.45)).catch(e => { heroOk = false; hud.setLoading('MARK 85 ERROR: ' + e.message, 100); }),
     city.load((t, p) => hud.setLoading(t, 45 + p * 0.55)).catch(e => { cityOk = false; hud.logError('CITY: ' + e.message); }),
+    traffic.loadModels(assets).catch(e => { hud.logError('TRAFFIC MODELS: ' + e.message); return false; }),
   ]);
+  const environment = await assets.loadEXR('modern_evening_street_1k.exr').catch(() => null);
+  if (environment) sm.setEnvironment(environment);
   assets.release();
   hud.setLoading(failures.length ? `STARTED WITH ${failures.length} ASSET ERROR(S)` : 'ALL SYSTEMS ONLINE', 100);
   setTimeout(() => hud.hideLoading(), failures.length ? 2500 : 500);
