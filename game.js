@@ -66,7 +66,7 @@ class AssetManager {
     let i = 0;
     await Promise.all(names.map(async n => {
       try {
-        const r = await fetch('./' + n + '?v=m14'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
+        const r = await fetch('./' + n + '?v=m15'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
         const z = await JSZip.loadAsync(await r.arrayBuffer());
         for (const f of Object.values(z.files)) if (!f.dir) this.entries.set(lc(base(f.name)), f);
         this._ok(n);
@@ -102,6 +102,11 @@ class AssetManager {
   async loadGLTF(name) {
     try {
       const f = this.entries.get(lc(name)); if (!f) throw Error('not found in any ZIP');
+      if (/\.glb$/i.test(name)) { // binary GLB: textures are embedded, no sidecar files needed
+        const buf = await f.async('arraybuffer');
+        const g = await new Promise((res, rej) => this.gltf.parse(buf, '', res, rej));
+        this.shrinkMaterials(g.scene); this._ok(name); return g;
+      }
       const text = await f.async('string'), j = JSON.parse(text);
       await Promise.all([...(j.images || []), ...(j.buffers || [])].filter(x => x.uri && !x.uri.startsWith('data:')).map(x => this.url(base(x.uri))));
       const g = await new Promise((res, rej) => this.gltf.parse(text, '', res, rej));
@@ -216,7 +221,7 @@ class SceneManager {
 const PITCH = 110, BLOCK = 86, HALF = BLOCK / 2, GRID = 8, SLOT = 37, PAD_H = 0.12;
 const WORLD_LIMIT = (GRID / 2) * PITCH + PITCH * 0.5;
 // Building models are discovered automatically from every mounted ZIP (any file named building_*.gltf).
-const buildingNames = (assets) => [...assets.entries.keys()].filter(k => /^building_.*\.gltf$/.test(k)).map(k => k.slice(0, -5));
+const buildingNames = (assets) => [...assets.entries.keys()].filter(k => /^building[-_].*\.(gltf|glb)$/.test(k));
 
 function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0), C = new THREE.Color();
@@ -237,7 +242,7 @@ class CityManager {
     const names = buildingNames(a);
     if (!names.length) throw new Error('No building_*.gltf models found in any ZIP');
     const [gb, decalCross, decalYellow] = await Promise.all([
-      Promise.all(names.map(n => a.loadGLTF(base + n + '.gltf').catch(() => null))),
+      Promise.all(names.map(n => a.loadGLTF(n).catch(() => null))),
       a.loadGLTF(base + 'Decal_Crosswalk.gltf'), a.loadGLTF(base + 'Decal_DoubleYellow_Straight.gltf'),
     ]);
     progress('PROCESSING CITY GEOMETRY', 55);
@@ -283,7 +288,7 @@ class CityManager {
         const rot = faceZ ? (qz > 0 ? 0 : Math.PI) : (qx > 0 ? Math.PI / 2 : -Math.PI / 2);
         const target = 18 + r() * 22; // each building gets its own footprint (18-40 m)
         const s = Math.min(target / t.w, target / t.d);
-        const sy = s * (0.85 + r() * 0.5) * (1 + (1 - Math.min(1, dist)) * 0.7);
+        const sy = Math.min(95 / t.h, s * (0.85 + r() * 0.5) * (1 + (1 - Math.min(1, dist)) * 0.7)); // cap towers at 95 m so the 70 m flight height stays above the skyline mostly
         // Non-uniform scale: same model comes out wider/narrower and deeper/shallower per building (capped to the 36 m block).
         const sx = Math.min(s * (0.78 + r() * 0.44), 36 / t.w), sz = Math.min(s * (0.78 + r() * 0.44), 36 / t.d);
         const sw = t.w * sx, sd = t.d * sz;
@@ -933,7 +938,7 @@ async function boot() {
   perf.onTierChange = t => { sm.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio)); city.setRadii(t.nearRadius, t.farRadius); hud.toast('QUALITY: ' + t.name.toUpperCase()); };
 
   hud.setLoading('READING ASSET ARCHIVES', 2);
-  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
+  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip', 'kenney_city-kit-commercial_2_1.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
   // Hero first (playable immediately), city second; either failure is reported and never blocks the loop.
   let heroOk = true, cityOk = true;
   await Promise.all([
