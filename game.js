@@ -66,7 +66,7 @@ class AssetManager {
     let i = 0;
     await Promise.all(names.map(async n => {
       try {
-        const r = await fetch('./' + n + '?v=m1'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
+        const r = await fetch('./' + n + '?v=m2'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
         const z = await JSZip.loadAsync(await r.arrayBuffer());
         for (const f of Object.values(z.files)) if (!f.dir) this.entries.set(lc(base(f.name)), f);
         this._ok(n);
@@ -259,7 +259,7 @@ class CityManager {
         M.compose(V.set(px, 0, pz), Q.setFromAxisAngle(UP, rot), S.set(s, sy, s));
         M.multiply(new THREE.Matrix4().makeTranslation(-t.cx, -t.min.y, -t.cz));
         const height = t.h * sy;
-        const sh = 0.7 + r() * 0.45, wa = 0.9 + r() * 0.2;
+        const sh = 0.55 + r() * 0.75, wa = 0.85 + r() * 0.3;
         this.placements.push({ ti, px, pz, hx, hz, height, matrix: M.clone(), tint: 0.55 + r() * 0.3, color: new THREE.Color().setRGB(sh * wa, sh, sh / wa) });
         this.colliders.push({ minX: px - hx, maxX: px + hx, minZ: pz - hz, maxZ: pz + hz, h: height });
       }
@@ -528,8 +528,11 @@ class IronMan {
         const o = await this.assets.loadFBX(f);
         const clip = o.animations && o.animations[0];
         if (clip) { const a = this.mixer.clipAction(clip); a.setLoop(THREE.LoopRepeat); a.play(); a.setEffectiveWeight(0); this.actions[k] = a; }
-      } catch (e) { /* missing clip: that state keeps the static pose */ }
+      } catch (e) { this.assets.onError('ANIM ' + f + ': ' + (e.message || e)); }
     }));
+    const n = Object.keys(this.actions).length;
+    this.assets.onStatus(n, 0);
+    if (n < 4) this.assets.onError('ANIM: only ' + n + '/4 clips loaded');
     this.play('idle');
   }
   play(name) {
