@@ -261,6 +261,86 @@ canvas,#joy,.controls,.btn{touch-action:none;-webkit-user-select:none;user-selec
 @media(max-width:900px){.databaseLayout{grid-template-columns:minmax(120px,25%) minmax(140px,32%) minmax(180px,43%);gap:7px}.jarvisPanel{padding:10px 8px}}
 @media(max-height:440px){.databaseLayout{padding:5px 10px}.databaseHero{padding:8px 5px}.heroReticle{width:90px;height:90px}.jarvisPanel{padding:8px}}
 
+
+/* STARK GAME MENU v2 — game-first presentation, no chat/briefing layout */
+body>canvas{position:fixed;inset:0;z-index:0}
+#loading{background:#020711 url('./stark-boot.webp') center 42%/cover no-repeat}
+#loading:before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,#020711a8,#02071122 48%,#02071188),linear-gradient(0deg,#020711dd,transparent 45%,#02071155);pointer-events:none}
+.bootSequence{position:relative;z-index:1;width:min(680px,88vw);padding:clamp(18px,3vw,34px);margin-top:clamp(120px,28vh,260px);background:linear-gradient(90deg,#020914c9,#06152277);border:1px solid #79e8ff35;box-shadow:0 18px 80px #0008;text-align:left}
+.bootWordmark{font-size:11px;letter-spacing:.38em;color:#c7f6ff}
+.reactorLoader{display:none}
+.loaderTitle{margin-top:14px;font-size:clamp(16px,2.5vw,24px);letter-spacing:.22em;text-shadow:0 0 18px #58dfff55}
+.loaderSub{font-size:10px;letter-spacing:.2em}
+.bootProgress{width:100%;height:3px;margin:22px 0 0;background:#163346}
+.bootProgress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#4dcfff,#e2fbff);box-shadow:0 0 16px #61e7ff}
+.bootFoot{font-size:9px;letter-spacing:.2em;color:#a4c9d9}
+#mainmenu.gameMenu{display:flex;flex-direction:column;justify-content:space-between;align-items:stretch;padding:clamp(12px,2.3vw,30px) clamp(16px,4vw,58px);box-sizing:border-box;background:linear-gradient(90deg,#020812ed 0%,#03101bcf 38%,#03101b66 70%,#02081288 100%),linear-gradient(0deg,#020812c9,transparent 35%,#02081277);font-family:Arial,system-ui,sans-serif;color:#e9faff}
+.gameMenuTop,.gameMenuBottom{height:34px;display:flex;align-items:center;justify-content:space-between;gap:12px;font:9px ui-monospace,monospace;letter-spacing:.2em;color:#91b6c8;border-bottom:1px solid #79dfff33}
+.gameMenuBottom{border-top:1px solid #79dfff33;border-bottom:0}
+.gameBrand{color:#d8f8ff;font-weight:800}.gameBrand i{display:inline-block;width:7px;height:7px;border-radius:50%;background:#80edff;box-shadow:0 0 12px #80edff;margin-right:8px}
+.gameBuild b{color:#85f5c2}
+.gameMenuBody{display:grid;grid-template-columns:minmax(330px,560px) minmax(190px,270px);justify-content:space-between;align-items:center;gap:clamp(18px,5vw,90px);flex:1;max-width:1180px;width:100%;margin:0 auto}
+.gameMenuLeft{padding:12px 0}
+.gameEyebrow,.missionLabel{font:10px ui-monospace,monospace;letter-spacing:.24em;color:#8cecff}
+.gameMenuLeft h1{font-size:clamp(34px,6.2vw,76px);line-height:.95;letter-spacing:-.055em;margin:15px 0 8px;color:#f4fbff;text-shadow:0 4px 30px #000}
+.gameMenuLeft h1 span{display:block;color:#9aeaff;font-size:.47em;letter-spacing:.22em;margin-top:12px}
+.gameSubline{font:10px ui-monospace,monospace;letter-spacing:.18em;color:#a4c2d0}
+.gameDivider{height:1px;background:linear-gradient(90deg,#81eaffaa,transparent);margin:22px 0}
+.gameDivider i{display:block;width:58px;height:2px;background:#aaf3ff;box-shadow:0 0 14px #67ddff}
+.missionCards{display:grid;gap:8px;margin-top:12px}
+.missionCard{position:relative;display:grid;grid-template-columns:34px 1fr;grid-template-rows:auto auto auto;gap:3px 10px;text-align:left;padding:10px 13px;background:linear-gradient(100deg,#0a2031d9,#06111dcc);border:1px solid #70dfff35;color:#e7f8ff;min-height:56px;cursor:pointer;transition:.2s}
+.missionCard.active{border-color:#8beaffb5;background:linear-gradient(100deg,#12445bd9,#071725eF);box-shadow:inset 3px 0 #8beaff,0 0 24px #4acfff1a}
+.missionNo{grid-row:1/4;align-self:center;font:11px ui-monospace,monospace;color:#83dff5}
+.missionCard strong{font-size:11px;letter-spacing:.16em}
+.missionCard small{font:8px ui-monospace,monospace;letter-spacing:.12em;color:#8caebf}
+.missionCard b{font:8px ui-monospace,monospace;letter-spacing:.12em;color:#7fe7bf}
+.gameMenuActions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.gameMenuActions .menuBtn{min-height:46px;padding:0 18px;border-radius:2px;font-size:10px;letter-spacing:.15em}
+.gameMenuActions .primary{background:linear-gradient(110deg,#2c9fc0,#10516c);border:1px solid #b6f5ff;color:white;box-shadow:0 0 26px #38cfff33}
+.gameMenuActions .primary span{margin-right:9px}
+.gameMenuActions .secondary{background:#071725d9;border:1px solid #7bdfff66;color:#bcefff}
+.gameMenuRight{justify-self:end;width:min(100%,250px);padding:18px;background:linear-gradient(150deg,#061725c9,#020913a8);border:1px solid #76dfff4d;box-shadow:0 16px 60px #0007;backdrop-filter:blur(10px)}
+.suitReadout{display:flex;justify-content:space-between;font:9px ui-monospace,monospace;letter-spacing:.15em;color:#9abac9}.suitReadout b{color:#8bf4c5}
+.reactorGraphic{position:relative;width:118px;height:118px;margin:20px auto;border:1px solid #68ddff66;border-radius:50%;display:grid;place-items:center;box-shadow:0 0 38px #36cfff22,inset 0 0 24px #36cfff18}
+.reactorGraphic:before,.reactorGraphic:after{content:"";position:absolute;border:1px solid #6bdfff77;border-radius:50%;inset:12px;animation:reactorSpin 12s linear infinite}
+.reactorGraphic:after{inset:25px;border-color:#e6fcff99;animation-direction:reverse;animation-duration:7s}
+.reactorGraphic i{width:38px;height:38px;border-radius:50%;background:radial-gradient(circle,#fff 0,#bafaff 25%,#31bfff 55%,#08638b 100%);box-shadow:0 0 15px #8beeff,0 0 48px #28bfff}
+.reactorGraphic b{position:absolute;inset:-8px;border:1px dashed #6edfff55;border-radius:50%}
+@keyframes reactorSpin{to{transform:rotate(360deg)}}
+.reactorName{display:flex;justify-content:space-between;font:9px ui-monospace,monospace;letter-spacing:.13em;color:#9bbacb;border-bottom:1px solid #71dfff33;padding-bottom:12px}.reactorName strong{color:#a7f4ff}
+.menuStats{display:grid;gap:12px;padding:14px 0}
+.menuStats div{display:flex;justify-content:space-between;gap:8px}
+.menuStats small{font:8px ui-monospace,monospace;letter-spacing:.15em;color:#7297aa}
+.menuStats b{font:8px ui-monospace,monospace;letter-spacing:.1em;color:#d9f4ff}
+.menuStats .safe{color:#7ce7b9}
+.menuHint{font:7px ui-monospace,monospace;letter-spacing:.12em;color:#6d96a9;text-align:center}
+#tutorial{background:#020812eF}
+@media(max-width:760px){
+ #mainmenu.gameMenu{padding:8px 12px}
+ .gameMenuTop,.gameMenuBottom{font-size:7px;letter-spacing:.1em}
+ .gameMenuBody{grid-template-columns:minmax(0,1fr) 132px;gap:8px}
+ .gameMenuLeft h1{font-size:clamp(29px,7vw,48px)}
+ .gameEyebrow,.missionLabel{font-size:8px;letter-spacing:.13em}
+ .gameSubline{font-size:8px}
+ .gameDivider{margin:12px 0}
+ .missionCard{padding:7px 8px;min-height:49px;grid-template-columns:24px 1fr;gap:2px 6px}
+ .missionCard strong{font-size:9px}.missionCard small,.missionCard b{font-size:7px}
+ .gameMenuRight{width:auto;padding:10px 8px}
+ .reactorGraphic{width:82px;height:82px;margin:12px auto}
+ .reactorGraphic i{width:28px;height:28px}
+ .menuStats{gap:8px;padding:10px 0}.menuStats div{display:block}.menuStats b{display:block;margin-top:3px;font-size:7px}
+ .gameMenuActions{gap:6px;margin-top:12px}.gameMenuActions .menuBtn{min-height:38px;padding:0 10px;font-size:8px}
+}
+@media(max-height:430px){
+ .gameMenuBody{gap:12px}
+ .gameMenuLeft h1{font-size:34px;margin:8px 0}
+ .gameDivider{margin:9px 0}.missionCards{gap:5px;margin-top:8px}
+ .missionCard{min-height:42px;padding:5px 8px}
+ .gameMenuRight{padding:8px}.reactorGraphic{width:65px;height:65px;margin:7px auto}
+ .reactorGraphic i{width:23px;height:23px}
+ .menuStats{gap:5px;padding:7px 0}
+}
+
 </style>
 </head>
 <body>
@@ -277,40 +357,33 @@ canvas,#joy,.controls,.btn{touch-action:none;-webkit-user-select:none;user-selec
  </div>
 </div>
 <div id="starkIntro" aria-hidden="true"><img src="./stark-boot.webp" alt=""></div>
-<div id="mainmenu">
- <div class="databaseTop"><span>STARK INDUSTRIES</span><span>MARK 85 / SYSTEM DATABASE</span><span>LEVEL 01&nbsp;&nbsp; CREDITS 000</span></div>
- <div class="databaseLayout">
-  <aside class="databaseNav">
-   <div class="navLabel">DATABASE INDEX</div>
-   <button class="dbTab active" data-topic="overview"><span>01</span> ENCRYPTED ARCHIVES <i>▰</i></button>
-   <button class="dbTab" data-topic="city"><span>02</span> CITY & SURROUNDINGS <i>⌄</i></button>
-   <button class="dbTab" data-topic="districts"><span>03</span> DISTRICTS <i>⌄</i></button>
-   <button class="dbTab" data-topic="suit"><span>04</span> SUIT SYSTEMS <i>⌄</i></button>
-   <button class="dbTab" data-topic="flight"><span>05</span> FLIGHT TRAINING <i>⌄</i></button>
-   <button class="dbTab" data-topic="story"><span>06</span> STORY PROTOCOLS <i>⌄</i></button>
-   <div class="navFoot">AUTHORIZED ACCESS ONLY<br>STARK NETWORK / SECURE LINK</div>
+<div id="mainmenu" class="gameMenu">
+ <div class="gameMenuTop"><span class="gameBrand"><i></i> STARK INDUSTRIES</span><span>MARK 85 / OPEN WORLD</span><span class="gameBuild">SYSTEM ONLINE <b>●</b></span></div>
+ <div class="gameMenuBody">
+  <section class="gameMenuLeft">
+   <div class="gameEyebrow">AVENGER INITIATIVE&nbsp; / &nbsp;FLIGHT PROTOCOL 01</div>
+   <h1>IRON MAN <span>MARK 85</span></h1>
+   <div class="gameSubline">THE CITY IS YOURS. TAKE CONTROL.</div>
+   <div class="gameDivider"><i></i></div>
+   <div class="missionLabel">SELECT DEPLOYMENT</div>
+   <div class="missionCards">
+    <button class="missionCard active" data-mission="city"><span class="missionNo">01</span><strong>NEW YORK CITY</strong><small>OPEN WORLD · FREE ROAM</small><b>DEPLOYMENT READY</b></button>
+    <button class="missionCard" data-mission="carrier"><span class="missionNo">02</span><strong>CARRIER STRIKE</strong><small>COMBAT OPERATION</small><b>MISSION AVAILABLE</b></button>
+    <button class="missionCard" data-mission="base"><span class="missionNo">03</span><strong>BASE ASSAULT</strong><small>HOSTILE ZONE · COMBAT</small><b>MISSION AVAILABLE</b></button>
+   </div>
+   <select id="missionSelect" aria-label="Deployment zone" hidden><option value="city">NEW YORK CITY</option><option value="carrier">CARRIER STRIKE</option><option value="base">MILITARY BASE ASSAULT</option></select>
+   <div class="gameMenuActions"><button class="menuBtn primary" id="startGame"><span>▶</span> DEPLOY MARK 85</button><button class="menuBtn secondary" id="openTutorial">FLIGHT CONTROLS</button></div>
+  </section>
+  <aside class="gameMenuRight">
+   <div class="suitReadout"><span>ARMOR STATUS</span><b>ONLINE</b></div>
+   <div class="reactorGraphic"><i></i><b></b></div>
+   <div class="reactorName">ARC REACTOR <strong>100%</strong></div>
+   <div class="menuStats"><div><small>SUIT</small><b>MARK LXXXV</b></div><div><small>PROPULSION</small><b>FLIGHT READY</b></div><div><small>THREAT LEVEL</small><b class="safe">NOMINAL</b></div></div>
+   <div class="menuHint">TOUCH TO SELECT&nbsp; · &nbsp;DEPLOY TO BEGIN</div>
   </aside>
-  <section class="databaseHero">
-   <div class="heroScan">ARMOR STATUS / ONLINE</div>
-   <div class="heroTitle">MARK <b>85</b></div>
-   <div class="heroSub">NANOTECHNOLOGY ARMOR PLATFORM</div>
-   <div class="heroReticle">+</div>
-   <div class="heroBottom"><span>ARC REACTOR</span><b>100%</b><span>POWERED</span></div>
-  </section>
-  <section class="jarvisPanel">
-   <div class="jarvisHeader"><span class="jarvisDot"></span> J.A.R.V.I.S. <small>PERSONAL ASSISTANT / ONLINE</small></div>
-   <div class="jarvisTag" id="jarvisTag">SYSTEM BRIEFING / 001</div>
-   <div class="jarvisTitle" id="jarvisTitle">GOOD EVENING, SIR.</div>
-   <div class="jarvisText" id="jarvisText">All systems are operational. The Mark 85 is ready for deployment. I recommend reviewing the flight controls before entering the city.</div>
-   <div class="jarvisRule"></div>
-   <div class="jarvisHint">J.A.R.V.I.S. RECOMMENDS</div>
-   <div class="jarvisText" id="jarvisHint">Select a database category. I will brief you on the selected system.</div>
-   <div class="missionPicker"><label for="missionSelect">DEPLOYMENT ZONE</label><select id="missionSelect"><option value="city">NEW YORK CITY</option><option value="carrier">CARRIER STRIKE</option><option value="base">MILITARY BASE ASSAULT</option></select></div><div class="menuActions"><button class="menuBtn primary" id="startGame">DEPLOY MARK 85</button><button class="menuBtn" id="openTutorial">TACTICAL BRIEFING</button></div>
-  </section>
  </div>
- <div class="databaseBottom"><span>STARK INDUSTRIES / R&D DIVISION</span><span>J.A.R.V.I.S. VOICE INTERFACE ENABLED</span><span>BUILD 01.85</span></div>
-</div>
-<div id="tutorial"><div class="tutorialCard"><div class="jarvisHeader"><span class="jarvisDot"></span> J.A.R.V.I.S. / FLIGHT BRIEFING</div><h2>FLIGHT CONTROL TRAINING</h2><p><b>Movement:</b> Use the left control pad to walk and steer.</p><p><b>Camera:</b> Drag the open screen area to look around.</p><p><b>Takeoff:</b> Select FLY. Use UP and DOWN to control altitude.</p><p><b>Flight:</b> Hold BOOST for acceleration. Use FIRE to discharge both repulsors.</p><p><b>Landing:</b> Select LAND when you are near a safe surface.</p><p class="jarvisQuote">“I will monitor your flight systems, sir. Try to avoid the buildings.”</p><button class="menuBtn primary" id="closeTutorial">ACKNOWLEDGED</button></div></div><div id="ui" class="gameHidden">
+ <div class="gameMenuBottom"><span>STARK INDUSTRIES / R&D</span><span>J.A.R.V.I.S. SYSTEM LINK ACTIVE</span><span>BUILD 02.00</span></div>
+</div><div id="tutorial"><div class="tutorialCard"><div class="jarvisHeader"><span class="jarvisDot"></span> J.A.R.V.I.S. / FLIGHT BRIEFING</div><h2>FLIGHT CONTROL TRAINING</h2><p><b>Movement:</b> Use the left control pad to walk and steer.</p><p><b>Camera:</b> Drag the open screen area to look around.</p><p><b>Takeoff:</b> Select FLY. Use UP and DOWN to control altitude.</p><p><b>Flight:</b> Hold BOOST for acceleration. Use FIRE to discharge both repulsors.</p><p><b>Landing:</b> Select LAND when you are near a safe surface.</p><p class="jarvisQuote">“I will monitor your flight systems, sir. Try to avoid the buildings.”</p><button class="menuBtn primary" id="closeTutorial">ACKNOWLEDGED</button></div></div><div id="ui" class="gameHidden">
  <div class="top"><div><div class="brand">STARK INDUSTRIES</div><div class="sub">MARK 85 // OPEN CITY BUILD // M21</div><div class="sub" id="assetstat"></div></div>
   <div class="readout">MODE <b id="mode">WALK</b><br>ALT <b id="alt">GROUND</b><br>SPD <b id="spd">0</b><br>NRG <b id="nrg">100</b></div></div>
  <div id="toast"></div><div class="cameraHint">DRAG OPEN SCREEN TO LOOK · PINCH TO ZOOM</div><div id="mission">OPERATION · HOSTILES 0/6</div><div id="helmetHud"><div class="helmetTop"><span>J.A.R.V.I.S. / TACTICAL LINK</span><span id="healthValue">100%</span></div><div class="helmetReticle">+</div><div class="helmetBottom"><span>ARC REACTOR <b id="helmetEnergy">100%</b></span><span>THREAT SCAN <b id="targetStatus">STANDBY</b></span></div></div><div id="minimapWrap"><canvas id="minimap" width="160" height="160"></canvas></div>
@@ -322,6 +395,12 @@ canvas,#joy,.controls,.btn{touch-action:none;-webkit-user-select:none;user-selec
   <button class="btn gold" id="boost" hidden><span class="glyph">»</span><span class="btnLabel">BOOST</span></button><button class="btn red" id="fire" hidden><span class="glyph">◉</span><span class="btnLabel">REPULSOR</span></button><button class="btn" id="lock" hidden><span class="glyph">⌖</span><span class="btnLabel">LOCK</span></button><button class="btn" id="view"><span class="glyph">◈</span><span class="btnLabel">HELMET</span></button>
  </div></div>
 </div>
+<script>
+document.querySelectorAll('.missionCard').forEach(card=>card.addEventListener('click',()=>{
+ document.querySelectorAll('.missionCard').forEach(c=>c.classList.toggle('active',c===card));
+ const select=document.getElementById('missionSelect');if(select)select.value=card.dataset.mission;
+}));
+</script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script>
 (function(){
@@ -333,5 +412,5 @@ canvas,#joy,.controls,.btn{touch-action:none;-webkit-user-select:none;user-selec
  // Touch gestures are managed by the game canvas and individual controls; avoid a page-wide touch blocker.
 })();
 </script>
-<script type="module" src="./game.js?v=m44"></script>
+<script type="module" src="./game.js?v=m45"></script>
 </body></html>
