@@ -49,10 +49,10 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   if(t){t.textContent=('ERROR: '+String(msg||'Unknown startup error')).slice(0,150);t.style.color='#ff9b91'}
   const b=document.getElementById('loadbar');if(b){b.style.width='100%';b.style.background='#ff665d'}
  }
- addEventListener('error',e=>fail(e.message||'Script failed to load'));
+ addEventListener('error',e=>fail((e.filename?e.filename.split('/').pop()+':'+e.lineno+':'+e.colno+' — ':'')+(e.message||'Script failed to load')));
  addEventListener('unhandledrejection',e=>fail(e.reason?.message||e.reason||'Module rejected'));
  setTimeout(()=>{const t=document.getElementById('loadtext');if(t&&t.textContent==='INITIALIZING SYSTEMS')fail('Game module did not start. Check CDN/network.');},12000);
 })();
 </script>
-<script type="module" src="./game.js"></script>
+<script type="module" src="./game.js?v=stark-city-parts-03"></script>
 </body></html>
