@@ -173,6 +173,20 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 .helmetReticle{width:58px;height:58px;border-color:#9cf1ffbb;box-shadow:0 0 18px #4bdfff33,inset 0 0 14px #4bdfff18}
 @media(max-width:700px){#ui .controls{grid-template-columns:repeat(3,54px);gap:6px;max-width:174px}#ui .btn{height:43px;border-radius:12px}.bottom{left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom))}}
 @media(max-height:440px){#ui .controls{grid-template-columns:repeat(3,52px);gap:5px}#ui .btn{height:39px}.joystick{width:96px;height:96px}}
+
+/* Cinematic Mark 85 boot reveal: reactor ignition opens the database menu */
+#starkIntro{position:fixed;inset:0;z-index:15;overflow:hidden;opacity:0;pointer-events:none;background:#020711;transition:opacity .45s ease}
+#starkIntro.ignite{opacity:1}
+#starkIntro img{position:absolute;width:100%;height:100%;inset:0;object-fit:cover;object-position:center 46%;transform:scale(1.025);filter:brightness(.88) saturate(1.08);transition:transform 3.2s cubic-bezier(.18,.7,.18,1),filter 2.2s ease,opacity .65s ease}
+#starkIntro.ignite img{transform:scale(1);filter:brightness(1) saturate(1.16)}
+#starkIntro:before{content:"";position:absolute;inset:0;z-index:1;background:radial-gradient(ellipse at 50% 47%,transparent 0 12%,#06101b22 38%,#02050bcc 100%);pointer-events:none}
+#starkIntro:after{content:"";position:absolute;z-index:2;left:50%;top:47.7%;width:30px;height:30px;border-radius:50%;transform:translate(-50%,-50%) scale(.18);opacity:0;background:radial-gradient(circle,#fff 0 4%,#bdfaff 13%,#55eaff 28%,#1e9dff66 48%,transparent 72%);box-shadow:0 0 28px 14px #62eaffaa,0 0 90px 38px #168dff66;transition:transform 1.15s cubic-bezier(.12,.78,.12,1),opacity .3s ease}
+#starkIntro.ignite:after{opacity:1;transform:translate(-50%,-50%) scale(1);animation:reactorPulse .85s ease-in-out infinite alternate}
+#starkIntro.reactorExpand:after{animation:none;opacity:1;transform:translate(-50%,-50%) scale(100);transition:transform 1.35s cubic-bezier(.14,.8,.12,1),opacity 1.25s ease}
+#starkIntro.leave{opacity:0}
+#starkIntro.leave img{opacity:0;transform:scale(1.08)}
+@keyframes reactorPulse{from{filter:brightness(1);box-shadow:0 0 25px 12px #62eaff99,0 0 70px 30px #168dff55}to{filter:brightness(1.8);box-shadow:0 0 42px 22px #a6f8ffdd,0 0 130px 65px #168dff99}}
+@media(prefers-reduced-motion:reduce){#starkIntro img,#starkIntro:after{transition-duration:.2s;animation:none}}
 </style>
 </head>
 <body>
@@ -188,6 +202,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   <div id="errors" aria-live="polite"></div>
  </div>
 </div>
+<div id="starkIntro" aria-hidden="true"><img src="./stark-boot.webp" alt=""></div>
 <div id="mainmenu">
  <div class="databaseTop"><span>STARK INDUSTRIES</span><span>MARK 85 / SYSTEM DATABASE</span><span>LEVEL 01&nbsp;&nbsp; CREDITS 000</span></div>
  <div class="databaseLayout">
