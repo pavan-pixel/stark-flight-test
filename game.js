@@ -220,21 +220,6 @@ class SceneManager {
     this.sky.renderOrder = -1;
     this.scene.add(this.sky);
 
-    setEnvironment(texture) {
-    if (!texture) return false;
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    const target = pmrem.fromEquirectangular(texture);
-    pmrem.dispose();
-    if (this._environmentTarget) this._environmentTarget.dispose();
-    if (this._environmentSource && this._environmentSource !== texture) this._environmentSource.dispose();
-    this._environmentTarget = target;
-    this._environmentSource = texture;
-    this.scene.environment = target.texture;
-    this.scene.background = texture;
-    this.sky.visible = false;
-    return true;
-  }
-
   // Soft radial glow used for the sun flare and the boost bloom.
     this.glowTex = glowTexture();
     this.sunFlare = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xfff1d0, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, fog: false, transparent: true }));
@@ -271,6 +256,20 @@ class SceneManager {
     }
     addEventListener('resize', () => this.resize());
     perf.onTierChange = t => this.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio));
+  }
+  setEnvironment(texture) {
+    if (!texture) return false;
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const target = pmrem.fromEquirectangular(texture);
+    pmrem.dispose();
+    if (this._environmentTarget) this._environmentTarget.dispose();
+    if (this._environmentSource && this._environmentSource !== texture) this._environmentSource.dispose();
+    this._environmentTarget = target;
+    this._environmentSource = texture;
+    this.scene.environment = target.texture;
+    this.scene.background = texture;
+    this.sky.visible = false;
+    return true;
   }
   resize() {
     this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix();
