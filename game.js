@@ -72,7 +72,7 @@ class AssetManager {
     let i = 0;
     await Promise.all(names.map(async n => {
       try {
-        const r = await fetch('./' + n + '?v=m18'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
+        const r = await fetch('./' + n + '?v=m21'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
         const z = await JSZip.loadAsync(await r.arrayBuffer());
         for (const f of Object.values(z.files)) if (!f.dir) this.entries.set(lc(base(f.name)), f);
         this._ok(n);
@@ -165,9 +165,9 @@ const MotionBlurShader = {
 };
 // Colour grade: a little more contrast and saturation, warm highlights, cool shadows.
 const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, contrast: { value: 1.08 }, sat: { value: 1.12 }, warm: { value: 0.035 } },
+  uniforms: { tDiffuse: { value: null }, contrast: { value: 1.12 }, sat: { value: 1.1 }, warm: { value: 0.05 }, vig: { value: 0.55 }, grain: { value: 0.035 }, time: { value: 0 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: 'uniform sampler2D tDiffuse; uniform float contrast; uniform float sat; uniform float warm; varying vec2 vUv; void main(){ vec4 c = texture2D(tDiffuse, vUv); float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722)); vec3 s = mix(vec3(l), c.rgb, sat); s = (s - 0.5) * contrast + 0.5; s.r += warm; s.b -= warm * 0.6; gl_FragColor = vec4(clamp(s, 0.0, 1.0), c.a); }',
+  fragmentShader: 'uniform sampler2D tDiffuse; uniform float contrast; uniform float sat; uniform float warm; uniform float vig; uniform float grain; uniform float time; varying vec2 vUv; void main(){ vec4 c = texture2D(tDiffuse, vUv); float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722)); vec3 s = mix(vec3(l), c.rgb, sat); s = (s - 0.5) * contrast + 0.5; s.r += warm; s.b -= warm * 0.7; float d = length(vUv - 0.5); s *= 1.0 - smoothstep(0.3, 0.95, d) * vig; float n = fract(sin(dot(vUv * 1000.0 + vec2(time * 37.0, time * 17.0), vec2(12.9898, 78.233))) * 43758.5453); s += (n - 0.5) * grain; gl_FragColor = vec4(clamp(s, 0.0, 1.0), c.a); }',
 };
 // Soft round or ring-shaped flare sprites for the lens flare.
 function flareTexture(kind) {
@@ -184,7 +184,7 @@ class SceneManager {
     this.perf = perf;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(FOG_COLOR);
-    this.scene.fog = new THREE.FogExp2(FOG_COLOR, 0.0017);
+    this.scene.fog = new THREE.FogExp2(FOG_COLOR, 0.0021);
     this.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 3500);
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, perf.tier.pixelRatio));
@@ -216,7 +216,7 @@ class SceneManager {
     // Soft radial glow used for the sun flare and the boost bloom.
     this.glowTex = glowTexture();
     this.sunFlare = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xfff1d0, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, fog: false, transparent: true }));
-    this.sunFlare.scale.set(420, 420, 1); this.sunFlare.renderOrder = 10;
+    this.sunFlare.scale.set(1100, 1100, 1); this.sunFlare.renderOrder = 10;
     this.scene.add(this.sunFlare);
 
     // Realtime sun shadows on the high tier only (follows the hero, so the 280 m box stays sharp).
@@ -233,7 +233,7 @@ class SceneManager {
     if (this.post) {
       this.composer = new EffectComposer(this.renderer);
       this.composer.addPass(new RenderPass(this.scene, this.camera));
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.4, 0.5, 0.88);
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.75, 0.7, 0.7);
       this.composer.addPass(this.bloom);
       this.grade = new ShaderPass(GradeShader); this.composer.addPass(this.grade);
       this.blur = new ShaderPass(MotionBlurShader); this.composer.addPass(this.blur);
@@ -241,10 +241,10 @@ class SceneManager {
       this._pr = this.renderer.getPixelRatio();
       // Lens flare: ghost rings and glows along the sun line.
       this.lensflare = new Lensflare();
-      this.lensflare.addElement(new LensflareElement(flareTexture(0), 700, 0, new THREE.Color(1, 0.9, 0.7)));
-      this.lensflare.addElement(new LensflareElement(flareTexture(1), 160, 0.35, new THREE.Color(1, 0.8, 0.5)));
-      this.lensflare.addElement(new LensflareElement(flareTexture(1), 320, 0.6, new THREE.Color(0.6, 0.8, 1)));
-      this.lensflare.addElement(new LensflareElement(flareTexture(0), 90, 0.9, new THREE.Color(1, 0.7, 0.4)));
+      this.lensflare.addElement(new LensflareElement(flareTexture(0), 1000, 0, new THREE.Color(1, 0.9, 0.7)));
+      this.lensflare.addElement(new LensflareElement(flareTexture(1), 240, 0.35, new THREE.Color(1, 0.8, 0.5)));
+      this.lensflare.addElement(new LensflareElement(flareTexture(1), 480, 0.6, new THREE.Color(0.6, 0.8, 1)));
+      this.lensflare.addElement(new LensflareElement(flareTexture(0), 140, 0.9, new THREE.Color(1, 0.7, 0.4)));
       this.scene.add(this.lensflare);
     }
     addEventListener('resize', () => this.resize());
@@ -268,6 +268,7 @@ class SceneManager {
       const pr = this.renderer.getPixelRatio();
       if (pr !== this._pr) { this._pr = pr; this.composer.setPixelRatio(pr); this.composer.setSize(innerWidth, innerHeight); }
       this.blur.uniforms.strength.value = Math.min(0.06, Math.max(0, (motion.speed - 25) * 0.0012)) + (motion.boost ? 0.02 : 0);
+      this.grade.uniforms.time.value = performance.now() * 0.001;
       this.composer.render();
     } else {
       this.renderer.render(this.scene, this.camera);
@@ -279,7 +280,7 @@ class SceneManager {
 // ===== environment/CityManager.js =====
 
 // Grid layout (metres). Roads run along lines x = k*PITCH and z = k*PITCH.
-const PITCH = 110, BLOCK = 86, HALF = BLOCK / 2, GRID = 8, SLOT = 37, PAD_H = 0.12;
+const PITCH = 110, BLOCK = 86, HALF = BLOCK / 2, GRID = 12, SLOT = 37, PAD_H = 0.12;
 const WORLD_LIMIT = (GRID / 2) * PITCH + PITCH * 0.5;
 // Building models are discovered automatically from every mounted ZIP (any file named building_*.gltf).
 const buildingNames = (assets) => [...assets.entries.keys()].filter(k => /^building[-_].*\.(gltf|glb)$/.test(k));
@@ -347,11 +348,11 @@ class CityManager {
         const ti = Math.floor(r() * this.templates.length), t = this.templates[ti];
         const faceZ = r() < 0.5;
         const rot = faceZ ? (qz > 0 ? 0 : Math.PI) : (qx > 0 ? Math.PI / 2 : -Math.PI / 2);
-        const target = 18 + r() * 22; // each building gets its own footprint (18-40 m)
+        const target = 31 + r() * 5; // fills the block quadrant (31-36 m), so neighbours sit flush
         const s = Math.min(target / t.w, target / t.d);
         const sy = Math.min(95 / t.h, s * (0.85 + r() * 0.5) * (1 + (1 - Math.min(1, dist)) * 0.7)); // cap towers at 95 m so the 70 m flight height stays above the skyline mostly
         // Non-uniform scale: same model comes out wider/narrower and deeper/shallower per building (capped to the 36 m block).
-        const sx = Math.min(s * (0.78 + r() * 0.44), 36 / t.w), sz = Math.min(s * (0.78 + r() * 0.44), 36 / t.d);
+        const sx = Math.min(s * (0.92 + r() * 0.1), 36 / t.w), sz = Math.min(s * (0.92 + r() * 0.1), 36 / t.d);
         const sw = t.w * sx, sd = t.d * sz;
         const hx = (faceZ ? sw : sd) / 2, hz = (faceZ ? sd : sw) / 2;
         const px = faceZ ? cx + qx * SLOT / 2 : cx + qx * (SLOT - hx);
@@ -656,6 +657,8 @@ class IronMan {
     this.chestLight = new THREE.PointLight(0x66e6ff, 0.8, 7); this.root.add(this.chestLight);
     this.bloom = new THREE.Sprite(new THREE.SpriteMaterial({ map: this._bloomTex(), color: 0x66e6ff, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
     this.bloom.position.set(0, 1.2, 0.2); this.bloom.scale.set(0.1, 0.1, 1); this.bloom.renderOrder = 9; this.tilt.add(this.bloom);
+    this.aura = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.bloom.material.map, color: 0x9fe8ff, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, transparent: true, opacity: 0 }));
+    this.aura.position.set(0, 1.1, 0); this.aura.scale.set(3.6, 3.6, 1); this.aura.renderOrder = 7; this.root.add(this.aura);
   }
 
   _buildFallback() {
@@ -716,7 +719,8 @@ class IronMan {
     }
     if (this.bloom) { const target = boost ? 0.9 : 0, s = 3.5 + (boost ? 3 : 0) + Math.sin(performance.now() * 0.02) * 0.4 * (boost ? 1 : 0);
       this.bloom.material.opacity += (target - this.bloom.material.opacity) * Math.min(1, dt * 8); this.bloom.scale.set(s, s, 1); }
-    if (this.chestLight) { this.chestLight.position.set(0, 1.4, -0.25); this.chestLight.intensity = 0.6 + this.flying * 1.2 + (boost ? 4 : 0); }
+    if (this.aura) { const a = this.flying * (boost ? 0.4 : 0.22); this.aura.material.opacity += (a - this.aura.material.opacity) * Math.min(1, dt * 6); }
+    if (this.chestLight) { this.chestLight.position.set(0, 1.4, -0.25); this.chestLight.intensity = 1.6 + this.flying * 1.6 + (boost ? 4 : 0); }
   }
 
   worldPosOf(id, out) { const b = this.bones[id]; if (b) { b.getWorldPosition(out); return out; } return out.copy(this.root.position).add(new THREE.Vector3(0, 1.3, 0)); }
@@ -808,10 +812,10 @@ class ThirdPersonCamera {
   bump(amount) { this.shake = Math.max(this.shake, amount); }
 
   update(dt, target, { flying, boost, speed }) {
-    const want = ((flying ? 42 + Math.min(10, speed * 0.07) : 8)) * this.userDist * (boost ? 1.2 : 1);
-    this.curDist = THREE.MathUtils.damp(this.curDist, want, 3, dt);
-    const focus = this._tmp.set(target.x, target.y + (flying ? 1.1 : 1.35), target.z);
-    const off = this._dir.set(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch) + (flying ? 0.32 : 0.18), Math.cos(this.yaw) * Math.cos(this.pitch)).normalize();
+    const want = (flying ? (boost ? 22 : 4.5) + Math.min(5, speed * 0.04) : 8) * this.userDist;
+    this.curDist = THREE.MathUtils.damp(this.curDist, want, 2.2, dt);
+    const focus = this._tmp.set(target.x, target.y + (flying ? 0.95 : 1.35), target.z);
+    const off = this._dir.set(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch) + (flying ? 0.14 : 0.18), Math.cos(this.yaw) * Math.cos(this.pitch)).normalize();
     // Collision: pull the camera in if a building is between player and camera.
     const hit = this.city.raycast(focus, off, this.curDist + 0.5);
     const d = Math.max(1.2, Math.min(this.curDist, hit - 0.6));
@@ -822,7 +826,7 @@ class ThirdPersonCamera {
     this.camera.position.copy(this.pos);
     if (this.shake > 0.001) { this.camera.position.x += (Math.random() - .5) * this.shake; this.camera.position.y += (Math.random() - .5) * this.shake; this.shake *= Math.pow(0.02, dt); }
     this.camera.lookAt(focus.x, focus.y + 0.1, focus.z);
-    const fov = 78 + (boost ? 18 : 0) + Math.min(16, speed * 0.14);
+    const fov = 66 + (boost ? 18 : 0) + Math.min(14, speed * 0.12);
     this.camera.fov = THREE.MathUtils.damp(this.camera.fov, fov, 4, dt); this.camera.updateProjectionMatrix();
   }
 }
@@ -958,7 +962,7 @@ class WindLines {
     this.n = n; this.seeded = false;
     this.off = []; this.w = []; this.l = [];
     for (let i = 0; i < n; i++) { this.off.push(new THREE.Vector3()); this.w.push(0.12); this.l.push(6); }
-    this.mat = new THREE.MeshBasicMaterial({ map: streakTexture(), color: 0xcfeeff, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    this.mat = new THREE.MeshBasicMaterial({ map: streakTexture(), color: 0xcfeeff, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
     this.mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), this.mat, n);
     this.mesh.frustumCulled = false; this.mesh.visible = false; this.mesh.renderOrder = 8;
     scene.add(this.mesh);
@@ -1024,9 +1028,8 @@ async function boot() {
   hud.setLoading(failures.length ? `STARTED WITH ${failures.length} ASSET ERROR(S)` : 'ALL SYSTEMS ONLINE', 100);
   setTimeout(() => hud.hideLoading(), failures.length ? 2500 : 500);
   // M1: start in the air; M3: rings only once the city exists.
-  if (cityOk) rings.build();
   move.startFlying(); hud.setFlightUI(true);
-  hud.toast(heroOk && cityOk ? `MARK 85 ONLINE · ${rings.count} RINGS` : 'DEGRADED MODE — SEE ERRORS');
+  hud.toast(heroOk && cityOk ? "MARK 85 ONLINE" : 'DEGRADED MODE — SEE ERRORS');
 
   hud.on('fly', () => { if (move.takeoff()) { hud.setFlightUI(true); cam.bump(0.05); hud.toast('TAKEOFF — THRUSTERS ENGAGED'); } });
   hud.on('land', () => { if (move.land()) hud.toast('LANDING'); });
