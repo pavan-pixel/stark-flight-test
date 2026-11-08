@@ -532,6 +532,7 @@ class IronMan {
     }));
     const n = Object.keys(this.actions).length;
     this.assets.onStatus(n, 0);
+    const tag = document.getElementById('assetstat'); if (tag) tag.textContent = 'ANIM ' + n + '/4 · M2';
     if (n < 4) this.assets.onError('ANIM: only ' + n + '/4 clips loaded');
     this.play('idle');
   }
