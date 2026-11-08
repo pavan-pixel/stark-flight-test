@@ -799,7 +799,8 @@ class IronMan {
   }
   // Thruster glow follows the real hand/foot bones; intensity = flight state.
   update(dt, flightAmount, speed = 0, boost = false, mode = 'WALK', verticalSpeed = 0, hovering = false) {
-    this.flying += (flightAmount - this.flying) * Math.min(1, dt * 6);\n    this.firePulse = Math.max(0, (this.firePulse || 0) - dt);
+    this.flying += (flightAmount - this.flying) * Math.min(1, dt * 6);
+    this.firePulse = Math.max(0, (this.firePulse || 0) - dt);
     if (this.mixer) {
       this.mixer.update(dt);
       let desired = 'idle', oneShot = false;
@@ -1025,6 +1026,9 @@ class HUD {
     $('fly').addEventListener('click', () => this.handlers.fly && this.handlers.fly());
     $('land').addEventListener('click', () => this.handlers.land && this.handlers.land());
     $('fire').addEventListener('click', () => this.handlers.fire && this.handlers.fire());
+    $('startGame').addEventListener('click', () => this.handlers.start && this.handlers.start());
+    $('openTutorial').addEventListener('click', () => $('tutorial').classList.add('show'));
+    $('closeTutorial').addEventListener('click', () => $('tutorial').classList.remove('show'));
     $('cine').addEventListener('click', () => this.handlers.cine && this.handlers.cine());
     this._hold('boost', 'boost', true); this._hold('up', 'up', 1); this._hold('down', 'down', 1);
   }
