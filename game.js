@@ -59,7 +59,7 @@ const lc = s => decodeURIComponent(s).toLowerCase();
 class AssetManager {
   constructor({ onError = () => {}, onStatus = () => {} } = {}) {
     this.onError = onError; this.onStatus = onStatus;
-    this.entries = new Map(); this.urls = new Map(); this.textures = new Map();
+    this.entries = new Map(); this.entryPriority = new Map(); this.urls = new Map(); this.textures = new Map();
     this.maxTex = 1024; this.dropNormals = false;
     this.manager = new THREE.LoadingManager();
     this.manager.setURLModifier(u => this.urls.get(lc(base(u))) || u);
@@ -75,7 +75,15 @@ class AssetManager {
       try {
         const r = await fetch('./' + n + '?v=m21'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
         const z = await JSZip.loadAsync(await r.arrayBuffer());
-        for (const f of Object.values(z.files)) if (!f.dir) this.entries.set(lc(base(f.name)), f);
+        // ZIPs mount concurrently. Resolve duplicate basenames by the explicit
+        // archive order, not network completion order; later archives have priority.
+        for (const f of Object.values(z.files)) if (!f.dir) {
+          const k=lc(base(f.name)), previous=this.entryPriority.get(k);
+          if(previous===undefined || i>=previous) {
+            this.entries.set(k,f);
+            this.entryPriority.set(k,i);
+          }
+        }
         this._ok(n);
       } catch (e) { this._fail(n, e); }
       progress(++i / names.length);
