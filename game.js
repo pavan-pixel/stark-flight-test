@@ -1139,6 +1139,7 @@ class HUD {
   hideLoading() { $('loading').classList.add('hide'); const intro=$('starkIntro'); if(!intro)return; requestAnimationFrame(()=>intro.classList.add('ignite')); setTimeout(()=>intro.classList.add('reactorExpand'),1450); setTimeout(()=>intro.classList.add('leave'),2750); setTimeout(()=>intro.remove(),3700); }
   toast(t) { const e = $('toast'); e.textContent = t; e.style.opacity = 1; clearTimeout(this._t); this._t = setTimeout(() => e.style.opacity = 0, 1300); }
   setFlightUI(flying) {
+    $('ui').classList.toggle('isFlying', !!flying);
     for (const id of ['fly', 'run', 'attack', 'kick']) $(id).hidden = flying;
     for (const id of ['land', 'hover', 'boost', 'up', 'down']) $(id).hidden = !flying;
     $('fire').hidden = false; $('view').hidden = false; $('lock').hidden = false;
@@ -1174,6 +1175,22 @@ class HUD {
     $('kick').addEventListener('click', () => this.handlers.attack && this.handlers.attack('kick'));
     $('view').addEventListener('click', () => this.handlers.view && this.handlers.view());
     $('lock').addEventListener('click', () => this.handlers.lock && this.handlers.lock());
+    $('pauseGame').addEventListener('click', () => {
+      if (!gameStarted) return;
+      gamePaused = !gamePaused;
+      $('pauseOverlay').classList.toggle('show', gamePaused);
+      $('pauseGame').textContent = gamePaused ? '▶' : 'Ⅱ';
+      if (gamePaused) { this.input.boost=false; this.input.up=0; this.input.down=0; this.input.run=false; this.input.hover=false; }
+    });
+    $('resumeGame').addEventListener('click', () => {
+      gamePaused=false; $('pauseOverlay').classList.remove('show'); $('pauseGame').textContent='Ⅱ';
+    });
+    $('settingsButton').addEventListener('click', () => $('settingsOverlay').classList.add('show'));
+    $('closeSettings').addEventListener('click', () => $('settingsOverlay').classList.remove('show'));
+    $('cameraReset').addEventListener('click', () => {
+      if (this.handlers.resetCamera) this.handlers.resetCamera();
+      $('settingsOverlay').classList.remove('show'); this.toast('CAMERA RESET');
+    });
     $('startGame').addEventListener('click', () => this.handlers.start && this.handlers.start());
     $('openTutorial').addEventListener('click', () => { $('tutorial').classList.add('show'); if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance('Sir, use the left control pad to move. Drag the screen to look around. Select fly to take off. Use up and down to control altitude. Boost for speed, fire to discharge the repulsors, and land near a safe surface.'); u.rate = 0.94; u.pitch = 0.88; window.speechSynthesis.speak(u); } });
     $('closeTutorial').addEventListener('click', () => $('tutorial').classList.remove('show'));
@@ -1438,6 +1455,7 @@ class CombatMission {
 // ===== main.js =====
 
 let gameStarted = false;
+let gamePaused = false;
 const hud = new HUD();
 const failures = [];
 function drawMiniMap(pos, heading, mission) {
@@ -1519,6 +1537,7 @@ async function boot() {
 
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   let cameraMode='THIRD', lockedTarget=null;
+  hud.on('resetCamera', () => { cam.yaw=0; cam.pitch=0.16; cam.userDist=1; cam.curDist=9; });
   hud.on('attack', type => { if(!gameStarted || move.flying)return; hero.attack(type); mission.melee(move.pos,move.heading,type,hero,hud); cam.bump(type==='kick'?.13:.08); });
   hud.on('view', () => { cameraMode=cameraMode==='THIRD'?'FIRST':'THIRD'; document.getElementById('view').textContent=cameraMode==='FIRST'?'HELMET':'3RD PERSON'; document.getElementById('helmetHud').classList.toggle('active',cameraMode==='FIRST'); hud.toast(cameraMode==='FIRST'?'HELMET VIEW':'THIRD-PERSON VIEW'); });
   hud.on('lock', () => { const alive=mission.targets.filter(t=>t.alive);lockedTarget=alive.length?alive.reduce((best,t)=>t.root.position.distanceTo(move.pos)<best.root.position.distanceTo(move.pos)?t:best):null;document.getElementById('targetStatus').textContent=lockedTarget?'LOCKED':'NO SIGNAL';hud.toast(lockedTarget?'TARGET ACQUIRED':'NO HOSTILE SIGNAL'); });
@@ -1535,6 +1554,7 @@ async function boot() {
     requestAnimationFrame(frame);
     const dt = Math.min(clock.getDelta(), 0.05);
     perf.frame(dt);
+    if (gamePaused) { sm.render(move.pos, {}); return; }
     if (!gameStarted) { hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading; hero.update(dt, 0, 0, false, MODE.WALK, 0, false); city.update(move.pos); if(missionEnv.active==='city')traffic.update(dt, move.pos); cine.update(dt, move); sm.render(move.pos, {}); return; }
     const inp = { x: hud.steer.x, y: hud.steer.y, run: hud.input.run, boost: hud.input.boost && move.mode === MODE.FLY && rep.energy > 1, hover: hud.input.hover, up: hud.input.up, down: hud.input.down };
     move.update(dt, inp, cam.yaw, city);
