@@ -1390,7 +1390,7 @@ async function boot() {
     requestAnimationFrame(frame);
     const dt = Math.min(clock.getDelta(), 0.05);
     perf.frame(dt);
-    if (!gameStarted) { hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading; hero.update(dt, 0, 0, false, MODE.WALK, 0, false); city.update(move.pos); traffic.update(dt, move.pos); cine.update(dt, move); sm.render(move.pos, {}); return; }
+    if (!gameStarted) { hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading; hero.update(dt, 0, 0, false, MODE.WALK, 0, false); city.update(move.pos); if(missionEnv.active==='city')traffic.update(dt, move.pos); cine.update(dt, move); sm.render(move.pos, {}); return; }
     const inp = { x: hud.steer.x, y: hud.steer.y, run: hud.input.run, boost: hud.input.boost && move.mode === MODE.FLY && rep.energy > 1, hover: hud.input.hover, up: hud.input.up, down: hud.input.down };
     move.update(dt, inp, cam.yaw, city);
     if (move.landed) { move.landed = false; hud.setFlightUI(false); hud.toast('LANDED — WALK MODE'); cam.bump(0.06); }
@@ -1402,7 +1402,7 @@ async function boot() {
     hero.tilt.rotation.set(move.pitch, 0, move.bank);
     hero.update(dt, move.flying ? 1 : 0, move.speed, inp.boost, move.mode, move.vel.y, inp.hover);
     city.update(move.pos);
-    traffic.update(dt, move.pos);
+    if(missionEnv.active==='city')traffic.update(dt, move.pos);
     rep.update(dt, inp.boost, mission, hud); mission.update(dt, move.pos, hud); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
     if (cine.enabled) cine.update(dt, move); else if(cameraMode==='FIRST'){const eye=hero.root.position.clone().add(new THREE.Vector3(0,1.62,0));sm.camera.position.copy(eye);const a=move.heading+cam.yaw;sm.camera.lookAt(eye.x-Math.sin(a)*30,eye.y-Math.sin(cam.pitch)*8,eye.z-Math.cos(a)*30);sm.camera.fov=THREE.MathUtils.damp(sm.camera.fov,move.flying?76:68,5,dt);sm.camera.updateProjectionMatrix();}else cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed });
     hud.readout(move.mode, move.pos.y, move.speed * 3.6, rep.energy);document.getElementById('helmetEnergy').textContent=Math.round(rep.energy)+'%';drawMiniMap(move.pos, move.heading, mission);
