@@ -631,13 +631,29 @@ class NYCWorld {
     const a=this.assets;
     if(!a.has('newyork.fbx')) return false;
     progress('LOADING NEW YORK WORLD',5);
-    const root=await a.loadFBX('NewYork.fbx');
 
-    // The source city is Z-up; convert it to Three.js Y-up before bounds and ground alignment.
-    root.rotation.x=-Math.PI/2;
+    // Keep the imported FBX transforms intact. Rotate a wrapper instead of
+    // overwriting the FBX root rotation, then infer the likely up-axis from
+    // the source bounds (city footprints are normally wider than city height).
+    const source=await a.loadFBX('NewYork.fbx');
+    source.updateMatrixWorld(true);
+    const sourceBounds=new THREE.Box3().setFromObject(source);
+    const raw=sourceBounds.getSize(new THREE.Vector3());
+    const dims={x:raw.x,y:raw.y,z:raw.z};
+    const axes=['x','y','z'].sort((a,b)=>dims[a]-dims[b]);
+    const smallest=axes[0], largest=Math.max(raw.x,raw.y,raw.z);
+    let upAxis='y';
+    // Only override the conventional Y-up orientation when the bounds give
+    // a useful signal. Near-cubic assets remain Y-up rather than being guessed.
+    if(largest>0 && dims[smallest]/largest<0.82) upAxis=smallest;
+
+    const root=new THREE.Group();
+    root.add(source);
+    if(upAxis==='z') root.rotation.x=-Math.PI/2;       // Z-up -> Y-up
+    else if(upAxis==='x') root.rotation.z=Math.PI/2;   // X-up -> Y-up
     root.updateMatrixWorld(true);
     this.bounds.setFromObject(root);
-    const size=this.bounds.getSize(new THREE.Vector3());
+    let size=this.bounds.getSize(new THREE.Vector3());
     const span=Math.max(size.x,size.z);
     if(!Number.isFinite(span)||span<1) throw new Error('NYC model has invalid dimensions');
 
@@ -646,19 +662,25 @@ class NYCWorld {
     root.updateMatrixWorld(true);
     this.bounds.setFromObject(root);
     const center=this.bounds.getCenter(new THREE.Vector3());
-    root.position.x-=center.x;
-    root.position.z-=center.z;
-    root.position.y-=this.bounds.min.y;
+    root.position.set(-center.x,-this.bounds.min.y,-center.z);
     root.updateMatrixWorld(true);
     this.bounds.setFromObject(root);
+    size=this.bounds.getSize(new THREE.Vector3());
+    if(![size.x,size.y,size.z,this.bounds.min.y].every(Number.isFinite) ||
+       size.x<10 || size.z<10 || size.y<1) {
+      throw new Error('NYC world bounds failed validation: '+size.x.toFixed(1)+' × '+size.y.toFixed(1)+' × '+size.z.toFixed(1));
+    }
     this.groundY=0;
 
     let meshCount=0, visibleMeshes=0;
     root.traverse(o=>{
       if(!o.isMesh)return;
       meshCount++;
+      if(o.geometry){
+        if(!o.geometry.boundingSphere)o.geometry.computeBoundingSphere();
+        if(o.visible && o.geometry.attributes?.position?.count>0) visibleMeshes++;
+      }
       o.castShadow=false; o.receiveShadow=true; o.frustumCulled=true;
-      if(o.geometry&&!o.geometry.boundingSphere)o.geometry.computeBoundingSphere();
       const mats=Array.isArray(o.material)?o.material:[o.material];
       for(const m of mats) if(m){
         m.side=THREE.DoubleSide;
@@ -669,24 +691,24 @@ class NYCWorld {
           m.needsUpdate=true;
         }
       }
-      if(o.visible)visibleMeshes++;
     });
-    if(!meshCount)throw new Error('NYC FBX contains no renderable meshes');
+    if(!meshCount || !visibleMeshes) throw new Error('NYC FBX has no visible renderable meshes');
     this.meshCount=meshCount;
+    this.orientation=upAxis.toUpperCase()+'-UP (auto)';
+    this.worldSize=size.clone();
     this.group.add(root);
     this.ready=true;
-    this.group.visible=true;
-    this.fallbackCity.group.visible=false;
-    progress('NEW YORK WORLD ONLINE · '+meshCount+' MESHES',100);
+    // Do not hide the procedural city until deployment actually activates NYC.
+    this.group.visible=false;
+    this.fallbackCity.group.visible=true;
+    progress('NYC WORLD READY · '+meshCount+' MESHES · '+this.orientation,100);
     return true;
   }
   activate(){
-    if(this.ready){
-      this.group.visible=true;
-      this.fallbackCity.group.visible=false;
-      return true;
-    }
-    return false;
+    if(!this.ready || !this.meshCount) return false;
+    this.group.visible=true;
+    this.fallbackCity.group.visible=false;
+    return true;
   }
 }
 
@@ -1485,7 +1507,7 @@ async function boot() {
     if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(v[1]); u.rate = 0.94; u.pitch = 0.88; window.speechSynthesis.speak(u); }
   }));
   document.querySelectorAll('.missionCard[data-mission]').forEach(card=>card.addEventListener('click',()=>{const value=card.dataset.mission;const select=document.getElementById('missionSelect');if(select)select.value=value;document.querySelectorAll('.missionCard').forEach(c=>c.classList.toggle('active',c===card));}));
-  hud.on('start', () => { const selected=document.getElementById('missionSelect')?.value||'city'; if(selected==='city'&&!nycOk){hud.toast('NEW YORK WORLD FAILED TO LOAD — CHECK SYSTEM LOG');hud.logError('NYC world is unavailable; deployment blocked to avoid showing the placeholder city.');return;} missionEnv.setMission(selected); mission.build(selected); if(selected==='city'&&nycOk){nycWorld.activate();move.pos.set(0,nycWorld.groundY,0);}else{nycWorld.group.visible=false;city.group.visible=selected==='city';move.pos.copy(missionEnv.spawn);} move.vel.set(0,0,0); move.heading=0; move.mode=MODE.WALK; gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); hud.setFlightUI(false); cine.trigger('INTRO', 2.4); });
+  hud.on('start', () => { const selected=document.getElementById('missionSelect')?.value||'city'; missionEnv.setMission(selected); mission.build(selected); if(selected==='city'&&nycOk){nycWorld.activate();move.pos.set(0,nycWorld.groundY,0);}else{nycWorld.group.visible=false;city.group.visible=selected==='city';move.pos.copy(missionEnv.spawn);if(selected==='city')hud.toast('NYC ASSET UNAVAILABLE · PROCEDURAL CITY MODE');} move.vel.set(0,0,0); move.heading=0; move.mode=MODE.WALK; gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); hud.setFlightUI(false); cine.trigger('INTRO', 2.4); });
 
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   let cameraMode='THIRD', lockedTarget=null;
