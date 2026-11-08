@@ -751,7 +751,6 @@ class IronMan {
       run: ['Running.fbx', 'Run_sprint.fbx'],
       takeoff: ['Jumping.fbx'],
       fly: ['Flying.fbx', 'Jump_in_the_air.fbx'],
-      hover: ['Floating.fbx'],
       fall: ['Falling Idle.fbx'],
       land: ['Falling To Landing.fbx'],
     };
@@ -768,12 +767,13 @@ class IronMan {
             this.actions[keyName] = action;
             return;
           }
-          this.assets.onError('ANIM ' + fileName + ': no compatible bone tracks');
         } catch (e) { /* try legacy filename where available */ }
       }
-      if (!this.actions[keyName]) this.assets.onError('ANIM ' + keyName + ': no compatible FBX clip found');
     }));
-    const loaded = Object.keys(this.actions).length;
+    // Floating.fbx uses a different skeleton. Reuse the compatible flight clip for hover;
+    // if unavailable, keep the idle pose while thrusters and hover stabilization do the work.
+    this.actions.hover = this.actions.fly || this.actions.idle || null;
+    const loaded = Object.keys(this.actions).filter(k => this.actions[k]).length;
     this.assets.onStatus(loaded, 0);
     if (!this.actions.idle) this.assets.onError('ANIM: idle clip unavailable; suit will use bind pose');
     this.play('idle');
@@ -1195,7 +1195,7 @@ class TrafficSystem {
 
 
 class CinematicDirector {
- constructor(camera,hero){this.camera=camera;this.hero=hero;this.enabled=true;this.mode='INTRO';this.time=0;this.duration=6.5;this.tmp=new THREE.Vector3();}
+ constructor(camera,hero){this.camera=camera;this.hero=hero;this.enabled=true;this.mode='MENU';this.time=0;this.duration=6.5;this.tmp=new THREE.Vector3();}
  trigger(mode,duration=1.8){this.mode=mode;this.time=0;this.duration=duration;this.enabled=true;}
  toggle(){this.enabled=!this.enabled;this.mode=this.enabled?'FOLLOW':'MANUAL';return this.enabled;}
  update(dt,move){
@@ -1203,7 +1203,9 @@ class CinematicDirector {
   const h=this.hero.root.position,yaw=this.hero.root.rotation.y;
   const f=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)),r=new THREE.Vector3(f.z,0,-f.x);
   const p=this.tmp,target=new THREE.Vector3(h.x,h.y+1.1,h.z);
-  if(this.mode==='INTRO'){
+  if(this.mode==='MENU'){
+   p.set(h.x+2.5,h.y+1.55,h.z+4.8);
+  }else if(this.mode==='INTRO'){
    const t=THREE.MathUtils.clamp(this.time/this.duration,0,1),e=t*t*(3-2*t);
    p.set(h.x+1.5,h.y+1.9,h.z+2.4).lerp(new THREE.Vector3(h.x-f.x*9+3,h.y+4.8,h.z-f.z*9+11),e);
    if(t>=1){const completed=this.mode;this.mode='FOLLOW';this.time=0;if(completed!=='INTRO')this.enabled=false;}
@@ -1217,7 +1219,7 @@ class CinematicDirector {
    p.set(h.x-f.x*d+r.x*2.2,h.y+(move.mode===MODE.FLY?3.4:2.1),h.z-f.z*d+r.z*2.2);
   }
   this.camera.position.lerp(p,Math.min(1,dt*3.8));this.camera.lookAt(target);
-  this.camera.fov=THREE.MathUtils.damp(this.camera.fov,this.mode==='INTRO'?42:(this.mode==='BOOST'?78:58),2.8,dt);this.camera.updateProjectionMatrix();
+  this.camera.fov=THREE.MathUtils.damp(this.camera.fov,this.mode==='MENU'?36:(this.mode==='INTRO'?42:(this.mode==='BOOST'?78:58)),2.8,dt);this.camera.updateProjectionMatrix();
  }
 }
 class StoryMission {
@@ -1274,8 +1276,9 @@ async function boot() {
   const environment = await assets.loadEXR('modern_evening_street_1k.exr').catch(() => null);
   if (environment) sm.setEnvironment(environment);
   assets.release();
-  hud.setLoading(failures.length ? `STARTED WITH ${failures.length} ASSET ERROR(S)` : 'ALL SYSTEMS ONLINE', 100);
-  setTimeout(() => hud.hideLoading(), failures.length ? 2500 : 500);
+  const degraded = !heroOk || !cityOk || failures.length > 0;
+  hud.setLoading(degraded ? 'CORE SYSTEMS READY · LIMITED ASSETS' : 'SYSTEMS ONLINE · READY FOR DEPLOYMENT', 100);
+  setTimeout(() => hud.hideLoading(), 900);
   // Start grounded in WALK mode. Flight begins only when the player presses FLY.
   move.pos.y = city.surfaceAt(move.pos.x, move.pos.z);
   move.mode = MODE.WALK;
@@ -1301,7 +1304,7 @@ async function boot() {
     document.getElementById('jarvisTag').textContent = 'SYSTEM BRIEFING / ' + btn.dataset.topic.toUpperCase();
     if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(v[1]); u.rate = 0.94; u.pitch = 0.88; window.speechSynthesis.speak(u); }
   }));
-  hud.on('start', () => { gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); cine.enabled = false; });
+  hud.on('start', () => { gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); cine.trigger('INTRO', 2.4); });
 
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   hud.on('fire', () => {
