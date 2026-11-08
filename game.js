@@ -1324,8 +1324,9 @@ class RepulsorSystem {
   update(dt, regenBlocked, mission = null, hud = null) {
     if (!regenBlocked) this.energy = Math.min(100, this.energy + dt * 6);
     for (let i = this.shots.length - 1; i >= 0; i--) {
-      const s = this.shots[i]; s.m.position.addScaledVector(s.v, dt);
-      if (mission && mission.hit(s.m.position, hud)) s.life = 0;
+      const s = this.shots[i], previous = s.m.position.clone();
+      s.m.position.addScaledVector(s.v, dt);
+      if (mission && (mission.hitSegment ? mission.hitSegment(previous, s.m.position, hud) : mission.hit(s.m.position, hud))) s.life = 0;
       if ((s.life -= dt) <= 0) { this.scene.remove(s.m); this.pool.push(s.m); this.shots.splice(i, 1); }
     }
   }
@@ -1617,18 +1618,47 @@ class MissionEnvironment {
  clear(){while(this.group.children.length)this.group.remove(this.group.children[0]);}
  mat(color,metalness=.15,roughness=.72){return new THREE.MeshStandardMaterial({color,metalness,roughness});}
  box(w,h,d,material,x,y,z){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;this.group.add(m);return m;}
+ label(text,x,z,w=18,h=8,color='#e7edf0'){
+  const c=document.createElement('canvas');c.width=512;c.height=256;const ctx=c.getContext('2d');
+  ctx.clearRect(0,0,512,256);ctx.fillStyle=color;ctx.font='900 190px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,256,132);
+  const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false,side:THREE.DoubleSide}));
+  m.rotation.x=-Math.PI/2;m.position.set(x,this.deckY+1.045,z);this.group.add(m);return m;
+ }
+ light(x,y,z,color=0x77ddff){
+  const m=new THREE.Mesh(new THREE.SphereGeometry(.32,8,6),new THREE.MeshBasicMaterial({color}));
+  m.position.set(x,y,z);this.group.add(m);
+ }
  setMission(type='carrier'){
   this.clear();this.active=type;this.city.group.visible=type==='city';
   if(type==='city'){this.spawn.set(0,this.city.surfaceAt(0,0),0);return;}
-  const dark=this.mat(0x17232d,.72,.48),deck=this.mat(0x3b454c,.55,.68),line=this.mat(0xd9e1e4,.2,.6),yellow=this.mat(0xf2b83e,.35,.5),glass=this.mat(0x31576a,.8,.18),white=this.mat(0xb9c4c9,.5,.5);
-  this.box(900,2,900,this.mat(0x17394a,.65,.28),0,-5,-150);
+  const dark=this.mat(0x17232d,.72,.48),deck=this.mat(0x3b454c,.55,.68),line=this.mat(0xd9e1e4,.2,.6),yellow=this.mat(0xf2b83e,.35,.5),glass=this.mat(0x31576a,.8,.18),white=this.mat(0xb9c4c9,.5,.5),black=this.mat(0x101a23,.35,.8);
+  // Deep ocean: a broad reflective surface gives the carrier a clear horizon and scale.
+  const seaCanvas=document.createElement('canvas');seaCanvas.width=seaCanvas.height=256;const sx=seaCanvas.getContext('2d');
+  sx.fillStyle='#123747';sx.fillRect(0,0,256,256);
+  for(let i=0;i<900;i++){const x=(i*73)%256,y=(i*137)%256;sx.strokeStyle=i%3?'rgba(130,205,220,.10)':'rgba(220,245,250,.16)';sx.lineWidth=1;sx.beginPath();sx.moveTo(x,y);sx.lineTo(x+8+(i%17),y+((i%5)-2));sx.stroke();}
+  const seaTex=new THREE.CanvasTexture(seaCanvas);seaTex.wrapS=seaTex.wrapT=THREE.RepeatWrapping;seaTex.repeat.set(7,7);
+  const sea=new THREE.Mesh(new THREE.PlaneGeometry(1200,1200),new THREE.MeshStandardMaterial({map:seaTex,color:0x9ab8c5,metalness:.35,roughness:.3}));
+  sea.rotation.x=-Math.PI/2;sea.position.set(0,-6.2,-150);this.group.add(sea);
   if(type==='carrier'){
    this.bounds={minX:-78,maxX:78,minZ:-278,maxZ:-32};this.deckY=7;
+   // Hull, flight deck and angled landing extension.
    this.box(145,10,270,dark,0,0,-155);this.box(118,2,250,deck,0,6,-155);this.box(24,2,65,deck,49,6,-85);
-   for(let x of [-48,-24,0,24,48])this.box(.7,.06,210,line,x,7.05,-155);
+   this.box(142,1.4,246,black,0,-4.7,-155);this.box(2,3,238,yellow,-72,-1.8,-155);this.box(2,3,238,yellow,72,-1.8,-155);
+   const bow=new THREE.Mesh(new THREE.ConeGeometry(72,48,4),dark);bow.rotation.x=-Math.PI/2;bow.position.set(0,0,-292);bow.scale.set(1,1,1.25);this.group.add(bow);
+   // Flight deck runway, catapult tracks, landing area and arresting cables.
+   for(let x of [-48,-24,0,24,48])this.box(.65,.06,210,line,x,7.05,-155);
    for(let z of [-255,-215,-175,-135,-95,-55])this.box(110,.05,.55,line,0,7.06,z);
    this.box(2,.08,90,yellow,-54,7.08,-155);
-   this.box(22,26,32,dark,38,20,-80);this.box(25,2,34,white,38,34,-80);this.box(18,8,20,glass,38,29,-80);this.box(4,12,5,dark,30,41,-80);
+   for(let i=0;i<5;i++)this.box(92,.045,.24,white,0,7.09,-90+i*3.2);
+   for(let x of [-57,57])for(let z=-270;z<-45;z+=18)this.light(x,7.55,z,x<0?0xffc56d:0x66dfff);
+   this.label('87',0,-255,22,11);this.label('CAT',-35,-220,12,5,'#f5c65e');
+   // Island superstructure with bridge windows, mast, radar and antenna arrays.
+   this.box(22,26,32,dark,38,20,-80);this.box(25,2,34,white,38,34,-80);this.box(18,8,20,glass,38,29,-80);
+   this.box(20,2,28,dark,38,38,-80);this.box(14,7,16,glass,38,42,-80);this.box(16,1,18,white,38,46,-80);
+   for(let i=0;i<5;i++)this.box(.35,3,.35,white,31+i*3.5,29,-63.7);
+   this.box(1,16,1,white,38,55,-80);this.box(12,.45,.45,white,38,52,-80);this.box(.45,9,.45,white,33,58,-80);
+   const radar=new THREE.Mesh(new THREE.CylinderGeometry(0,3.2,.6,12),white);radar.position.set(38,64,-80);this.group.add(radar);
    for(let i=0;i<3;i++){const z=-220+i*58;this.makeJet(-30,z,deck,white);this.box(5,3,8,yellow,58,8,z+8);}
    for(let x of [-62,62]){this.box(5,3,15,yellow,x,8,-150);this.box(3,5,3,white,x,10,-150);}
    this.spawn.set(0,this.deckY,-245);
@@ -1643,23 +1673,113 @@ class MissionEnvironment {
    this.spawn.set(0,this.deckY,115);
   }
  }
- makeJet(x,z,body,accent){const root=new THREE.Group();root.position.set(x,this.deckY+1,z);const fus=new THREE.Mesh(new THREE.ConeGeometry(1.7,13,8),body);fus.rotation.x=Math.PI/2;root.add(fus);const wing=new THREE.Mesh(new THREE.BoxGeometry(13,.25,3.5),accent);root.add(wing);const tail=new THREE.Mesh(new THREE.BoxGeometry(5,.3,2),body);tail.position.z=4;root.add(tail);this.group.add(root);}
+ makeJet(x,z,body,accent){
+  const root=new THREE.Group();root.position.set(x,this.deckY+1,z);
+  const fus=new THREE.Mesh(new THREE.CapsuleGeometry(.85,8.5,4,8),body);fus.rotation.x=Math.PI/2;root.add(fus);
+  const nose=new THREE.Mesh(new THREE.ConeGeometry(.84,4.2,8),body);nose.rotation.x=-Math.PI/2;nose.position.z=-6.2;root.add(nose);
+  const wing=new THREE.Mesh(new THREE.BoxGeometry(15,.32,4.4),accent);wing.position.z=.4;root.add(wing);
+  const tail=new THREE.Mesh(new THREE.BoxGeometry(5,.3,2.6),body);tail.position.set(0,.9,4.5);root.add(tail);
+  for(const side of [-1,1]){const fin=new THREE.Mesh(new THREE.BoxGeometry(.28,2.4,2.2),body);fin.position.set(side*1.4,1.1,4.1);fin.rotation.z=side*.12;root.add(fin);const engine=new THREE.Mesh(new THREE.CylinderGeometry(.42,.52,2.4,8),dark);engine.rotation.x=Math.PI/2;engine.position.set(side*1.6,-.15,2.7);root.add(engine);}
+  const cockpit=new THREE.Mesh(new THREE.SphereGeometry(.78,10,8),glass);cockpit.scale.set(.75,.5,1.55);cockpit.position.set(0,.72,-2.4);root.add(cockpit);
+  this.group.add(root);
+ }
  surfaceAt(x,z,fallback){if(this.active==='city')return fallback(x,z);const b=this.bounds;return x>=b.minX&&x<=b.maxX&&z>=b.minZ&&z<=b.maxZ?this.deckY:fallback(x,z);}
  resolveCircle(pos,r,y){if(this.active==='city')return this.city.resolveCircle(pos,r,y);const b=this.bounds;pos.x=THREE.MathUtils.clamp(pos.x,b.minX+r,b.maxX-r);pos.z=THREE.MathUtils.clamp(pos.z,b.minZ+r,b.maxZ-r);return false;}
 }
 class CombatMission {
- constructor(scene,hud){this.scene=scene;this.hud=hud;this.targets=[];this.complete=false;this.playerHealth=100;this.elapsed=0;this.group=new THREE.Group();scene.add(this.group);}
- build(type){this.group.clear();this.targets=[];this.complete=false;this.elapsed=0;this.playerHealth=100;this.activeName=type==='carrier'?'CARRIER STRIKE':type==='base'?'BASE ASSAULT':'CITY DEFENSE';
+ constructor(scene,hud){
+  this.scene=scene;this.hud=hud;this.targets=[];this.enemyShots=[];this.complete=false;this.playerHealth=100;this.elapsed=0;
+  this.group=new THREE.Group();scene.add(this.group);
+  this.shotGeo=new THREE.SphereGeometry(.13,8,6);this.shotMat=new THREE.MeshBasicMaterial({color:0xff6b4b});
+ }
+ build(type){
+  this.group.clear();this.targets=[];this.enemyShots=[];this.complete=false;this.elapsed=0;this.playerHealth=100;
+  this.activeName=type==='carrier'?'CARRIER STRIKE':type==='base'?'BASE ASSAULT':'CITY DEFENSE';
   const positions=type==='carrier'?[[-22,7,-178],[22,7,-150],[-42,7,-115],[42,7,-205]]:type==='base'?[[-48,1,15],[48,1,15],[-75,1,-25],[75,1,-25]]:[[-18,18,-90],[18,18,-120],[-42,26,-155],[42,22,-185]];
-  positions.forEach((p,i)=>{const root=this.makeSoldier(i);root.position.set(...p);this.group.add(root);this.targets.push({root,alive:true,hp:2,phase:i*1.4,attack:1.5+i*.4,kind:'soldier'});});
+  positions.forEach((p,i)=>{const root=this.makeSoldier(i);root.position.set(...p);this.group.add(root);this.targets.push({root,alive:true,hp:3,phase:i*1.4,attack:1.4+i*.45,kind:'soldier'});});
   for(let i=0;i<2;i++){const root=this.makeDrone();root.position.set((i?1:-1)*32,24,-190-i*25);this.group.add(root);this.targets.push({root,alive:true,hp:2,phase:i*2,attack:2,kind:'drone'});}
  }
- makeSoldier(i){const g=new THREE.Group(),armor=new THREE.MeshStandardMaterial({color:i%2?0x6c747b:0x39434d,metalness:.65,roughness:.4}),dark=new THREE.MeshStandardMaterial({color:0x151b22,metalness:.25,roughness:.65}),visor=new THREE.MeshBasicMaterial({color:0xff543e});const part=(geo,mat,x,y,z)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;g.add(m);return m;};part(new THREE.CapsuleGeometry(.34,.72,4,8),armor,0,1.05,0);part(new THREE.SphereGeometry(.25,10,8),dark,0,1.78,0);part(new THREE.BoxGeometry(.34,.08,.08),visor,0,1.8,-.22);for(const side of [-1,1]){part(new THREE.CapsuleGeometry(.12,.58,4,6),armor,side*.48,1.15,0);part(new THREE.CapsuleGeometry(.13,.7,4,6),dark,side*.19,.4,0);}return g;}
- makeDrone(){const g=new THREE.Group(),m=new THREE.MeshStandardMaterial({color:0x354653,metalness:.8,roughness:.3}),red=new THREE.MeshBasicMaterial({color:0xff553e});g.add(new THREE.Mesh(new THREE.SphereGeometry(.65,12,8),m));g.add(new THREE.Mesh(new THREE.BoxGeometry(2.8,.2,.6),m));const e=new THREE.Mesh(new THREE.SphereGeometry(.18,8,6),red);e.position.z=-.55;g.add(e);return g;}
- hit(point,hud){let found=null,dmin=7;for(const t of this.targets)if(t.alive){const d=t.root.position.distanceTo(point);if(d<dmin){found=t;dmin=d;}}if(!found)return false;found.hp--;if(found.hp<=0){found.alive=false;found.root.visible=false;}else found.root.scale.multiplyScalar(.94);if(hud)hud.toast(found.hp?'ARMOR HIT':'HOSTILE NEUTRALIZED');if(this.targets.every(t=>!t.alive)){this.complete=true;if(hud)hud.toast('MISSION COMPLETE · AREA SECURE');}return true;}
- melee(pos,heading,type,hero,hud){const f=new THREE.Vector3(-Math.sin(heading),0,-Math.cos(heading));let target=null,best=type==='kick'?4.4:3.5;for(const t of this.targets)if(t.alive&&t.kind==='soldier'){const d=t.root.position.clone().sub(pos),forward=d.x*f.x+d.z*f.z;if(forward>-.2&&d.length()<best){best=d.length();target=t;}}if(!target){if(hud)hud.toast('NO TARGET IN RANGE');return false;}target.hp-=type==='kick'?2:1;if(target.hp<=0){target.alive=false;target.root.visible=false;if(hud)hud.toast('HOSTILE DOWN');}else if(hud)hud.toast('IMPACT · ARMOR DAMAGED');if(this.targets.every(t=>!t.alive))this.complete=true;return true;}
- update(dt,pos,hud){this.elapsed+=dt;for(const t of this.targets)if(t.alive){t.phase+=dt;const p=t.root.position;if(t.kind==='drone'){p.y+=Math.sin(t.phase*1.4)*dt*1.1;t.root.rotation.y+=dt*.45;}else{const dx=pos.x-p.x,dz=pos.z-p.z,d=Math.hypot(dx,dz);if(d<38){t.root.rotation.y=Math.atan2(dx,dz);if(d>3.2){p.x+=dx/d*dt*2;p.z+=dz/d*dt*2;}t.attack-=dt;if(d<18&&t.attack<=0){this.playerHealth=Math.max(0,this.playerHealth-5);t.attack=2.4;if(hud)hud.toast('J.A.R.V.I.S.: INCOMING FIRE');}}}}
-  const alive=this.targets.filter(t=>t.alive).length,el=document.getElementById('mission');if(el)el.textContent=this.complete?'OBJECTIVE COMPLETE · AREA SECURE':'OPERATION '+this.activeName+' · HOSTILES '+alive+'/'+this.targets.length;const hv=document.getElementById('healthValue');if(hv)hv.textContent=Math.round(this.playerHealth)+'%';
+ makeSoldier(i){
+  const g=new THREE.Group(),armor=new THREE.MeshStandardMaterial({color:i%2?0x77818a:0x394956,metalness:.58,roughness:.43}),dark=new THREE.MeshStandardMaterial({color:0x151d25,metalness:.3,roughness:.62}),visor=new THREE.MeshBasicMaterial({color:0xff543e}),weapon=new THREE.MeshStandardMaterial({color:0x202a32,metalness:.72,roughness:.35});
+  const part=(geo,mat,x,y,z)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;g.add(m);return m;};
+  part(new THREE.CapsuleGeometry(.34,.72,5,9),armor,0,1.05,0);
+  part(new THREE.SphereGeometry(.26,12,9),dark,0,1.82,0);
+  part(new THREE.BoxGeometry(.36,.075,.075),visor,0,1.84,-.235);
+  part(new THREE.BoxGeometry(.56,.28,.24),dark,0,1.42,.19);
+  for(const side of [-1,1]){
+   part(new THREE.SphereGeometry(.22,9,7),armor,side*.43,1.47,0);
+   part(new THREE.CapsuleGeometry(.12,.52,4,7),dark,side*.48,1.12,-.02);
+   part(new THREE.CapsuleGeometry(.14,.7,4,7),armor,side*.2,.4,0);
+   part(new THREE.BoxGeometry(.34,.16,.42),dark,side*.2,.13,-.02);
+  }
+  // Visible rifle silhouette, aimed forward along local -Z.
+  part(new THREE.BoxGeometry(.16,.16,.92),weapon,.28,1.34,-.48);
+  part(new THREE.BoxGeometry(.11,.28,.2),weapon,.28,1.14,-.28);
+  part(new THREE.CylinderGeometry(.045,.045,.52,7),weapon,.28,1.34,-1.16).rotation.x=Math.PI/2;
+  return g;
+ }
+ makeDrone(){
+  const g=new THREE.Group(),m=new THREE.MeshStandardMaterial({color:0x354653,metalness:.8,roughness:.3}),red=new THREE.MeshBasicMaterial({color:0xff553e});
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(.65,12,8),m));g.add(new THREE.Mesh(new THREE.BoxGeometry(2.8,.2,.6),m));
+  for(const side of [-1,1]){const rotor=new THREE.Mesh(new THREE.CylinderGeometry(.05,.05,2.2,6),m);rotor.rotation.z=Math.PI/2;rotor.position.x=side*1.35;g.add(rotor);}
+  const e=new THREE.Mesh(new THREE.SphereGeometry(.18,8,6),red);e.position.z=-.55;g.add(e);return g;
+ }
+ hit(point,hud){let found=null,dmin=7;for(const t of this.targets)if(t.alive){const d=t.root.position.distanceTo(point);if(d<dmin){found=t;dmin=d;}}if(!found)return false;this.damage(found,1,hud);return true;}
+ hitSegment(a,b,hud){
+  const ab=b.clone().sub(a),lenSq=ab.lengthSq();let found=null,best=7;
+  for(const t of this.targets)if(t.alive){
+   const ap=t.root.position.clone().sub(a),u=lenSq>1e-8?THREE.MathUtils.clamp(ap.dot(ab)/lenSq,0,1):0;
+   const closest=a.clone().addScaledVector(ab,u),d=closest.distanceTo(t.root.position);
+   if(d<best){best=d;found=t;}
+  }
+  if(!found)return false;this.damage(found,1,hud);return true;
+ }
+ damage(target,amount,hud){
+  target.hp-=amount;
+  if(target.hp<=0){target.alive=false;target.root.visible=false;if(hud)hud.toast(target.kind==='drone'?'DRONE DESTROYED':'HOSTILE NEUTRALIZED');}
+  else{target.root.scale.multiplyScalar(.94);if(hud)hud.toast('ARMOR HIT · '+target.hp+' HP');}
+  if(this.targets.every(t=>!t.alive)){this.complete=true;if(hud)hud.toast('MISSION COMPLETE · AREA SECURE');}
+ }
+ melee(pos,heading,type,hero,hud){
+  const f=new THREE.Vector3(-Math.sin(heading),0,-Math.cos(heading));let target=null,best=type==='kick'?4.4:3.5;
+  for(const t of this.targets)if(t.alive&&t.kind==='soldier'){const d=t.root.position.clone().sub(pos),forward=d.x*f.x+d.z*f.z;if(forward>-.2&&d.length()<best){best=d.length();target=t;}}
+  if(!target){if(hud)hud.toast('NO TARGET IN RANGE');return false;}
+  this.damage(target,type==='kick'?2:1,hud);return true;
+ }
+ fireAtPlayer(origin,pos){
+  if(this.enemyShots.length>=24)return;
+  const aim=new THREE.Vector3(pos.x-origin.x,pos.y+1.15-origin.y,pos.z-origin.z).normalize();
+  const mesh=new THREE.Mesh(this.shotGeo,this.shotMat);mesh.position.copy(origin);mesh.scale.set(.85,.85,3.8);mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),aim);this.group.add(mesh);
+  this.enemyShots.push({mesh,velocity:aim.multiplyScalar(62),life:2.8});
+ }
+ update(dt,pos,hud){
+  this.elapsed+=dt;
+  for(const t of this.targets)if(t.alive){
+   t.phase+=dt;const p=t.root.position;
+   if(t.kind==='drone'){
+    p.y+=Math.sin(t.phase*1.4)*dt*1.1;t.root.rotation.y+=dt*.45;
+    t.attack-=dt;if(t.attack<=0){this.fireAtPlayer(p,pos);t.attack=2.8+((t.phase*10)%1)*.8;}
+   }else{
+    const dx=pos.x-p.x,dz=pos.z-p.z,d=Math.hypot(dx,dz);
+    if(d<46){
+     t.root.rotation.y=Math.atan2(dx,dz);
+     if(d>6){p.x+=dx/d*dt*1.6;p.z+=dz/d*dt*1.6;}
+     t.attack-=dt;
+     if(d<34&&t.attack<=0){this.fireAtPlayer(p.clone().add(new THREE.Vector3(0,1.35,0)),pos);t.attack=1.9+((t.phase*7)%1)*.7;}
+    }
+   }
+  }
+  const playerAim=pos.clone().add(new THREE.Vector3(0,1.15,0));
+  for(let i=this.enemyShots.length-1;i>=0;i--){
+   const s=this.enemyShots[i],previous=s.mesh.position.clone();s.mesh.position.addScaledVector(s.velocity,dt);s.life-=dt;
+   if(s.mesh.position.distanceTo(playerAim)<1.35){
+    this.playerHealth=Math.max(0,this.playerHealth-8);s.life=0;if(hud)hud.toast(this.playerHealth?'INCOMING FIRE · SUIT -8%':'SUIT CRITICAL · RETREAT');
+   }
+   if(s.life<=0){this.group.remove(s.mesh);this.enemyShots.splice(i,1);}
+  }
+  const alive=this.targets.filter(t=>t.alive).length,el=document.getElementById('mission');
+  if(el)el.textContent=this.complete?'OBJECTIVE COMPLETE · AREA SECURE':'OPERATION '+this.activeName+' · HOSTILES '+alive+'/'+this.targets.length;
+  const hv=document.getElementById('healthValue');if(hv)hv.textContent=Math.round(this.playerHealth)+'%';
  }
 }
 
