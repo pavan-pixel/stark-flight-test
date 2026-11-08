@@ -1232,6 +1232,59 @@ class StoryMission {
  update(dt,hud){for(const t of this.targets)if(t.alive){t.phase+=dt;t.root.position.y+=Math.sin(t.phase*1.5)*dt*1.2;t.root.rotation.y+=dt*.5;}const el=document.getElementById('mission');if(el)el.textContent=this.complete?'OBJECTIVE COMPLETE · SECTOR SECURE':'PROTOCOL 01 · NEUTRALIZE HOSTILE DRONES · '+(3-this.targets.filter(t=>t.alive).length)+'/3';}
 }
 
+
+// ===== missions/MissionEnvironment.js =====
+class MissionEnvironment {
+ constructor(scene,city){this.scene=scene;this.city=city;this.group=new THREE.Group();scene.add(this.group);this.active='carrier';this.deckY=7;this.bounds={minX:-82,maxX:82,minZ:-278,maxZ:-32};this.spawn=new THREE.Vector3(0,7,-245);}
+ clear(){while(this.group.children.length){const o=this.group.children.pop();this.group.remove(o);}}
+ mat(color,metalness=.15,roughness=.72){return new THREE.MeshStandardMaterial({color,metalness,roughness});}
+ box(w,h,d,material,x,y,z){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;this.group.add(m);return m;}
+ setMission(type='carrier'){
+  this.clear();this.active=type;this.city.group.visible=type==='city';
+  if(type==='city'){this.spawn.set(0,this.city.surfaceAt(0,0),0);return;}
+  const dark=this.mat(0x17232d,.72,.48),deck=this.mat(0x3b454c,.55,.68),line=this.mat(0xd9e1e4,.2,.6),yellow=this.mat(0xf2b83e,.35,.5),glass=this.mat(0x31576a,.8,.18),white=this.mat(0xb9c4c9,.5,.5);
+  this.box(900,2,900,this.mat(0x17394a,.65,.28),0,-5,-150);
+  if(type==='carrier'){
+   this.bounds={minX:-78,maxX:78,minZ:-278,maxZ:-32};this.deckY=7;
+   this.box(145,10,270,dark,0,0,-155);this.box(118,2,250,deck,0,6,-155);this.box(24,2,65,deck,49,6,-85);
+   for(let x of [-48,-24,0,24,48])this.box(.7,.06,210,line,x,7.05,-155);
+   for(let z of [-255,-215,-175,-135,-95,-55])this.box(110,.05,.55,line,0,7.06,z);
+   this.box(2,.08,90,yellow,-54,7.08,-155);
+   this.box(22,26,32,dark,38,20,-80);this.box(25,2,34,white,38,34,-80);this.box(18,8,20,glass,38,29,-80);this.box(4,12,5,dark,30,41,-80);
+   for(let i=0;i<3;i++){const z=-220+i*58;this.makeJet(-30,z,deck,white);this.box(5,3,8,yellow,58,8,z+8);}
+   for(let x of [-62,62]){this.box(5,3,15,yellow,x,8,-150);this.box(3,5,3,white,x,10,-150);}
+   this.spawn.set(0,this.deckY,-245);
+  }else{
+   this.bounds={minX:-150,maxX:150,minZ:-160,maxZ:160};this.deckY=1;
+   this.box(310,2,330,deck,0,0,0);
+   for(let x of [-130,-100,100,130])this.box(1,.08,280,line,x,1.08,0);
+   for(let z of [-130,-90,-50,0,50,90,130])this.box(270,.06,.5,line,0,1.1,z);
+   for(let x of [-92,92]){this.box(58,24,54,dark,x,14,-70);this.box(60,3,56,white,x,27,-70);this.box(54,14,2,glass,x,16,-42);}
+   this.box(24,38,24,dark,0,20,95);this.box(28,4,28,white,0,41,95);this.box(20,10,20,glass,0,48,95);
+   this.box(52,1,52,yellow,0,2,0);this.makeJet(-38,48,deck,white);this.makeJet(42,48,deck,white);
+   this.spawn.set(0,this.deckY,115);
+  }
+ }
+ makeJet(x,z,body,accent){const root=new THREE.Group();root.position.set(x,this.deckY+1,z);const fus=new THREE.Mesh(new THREE.ConeGeometry(1.7,13,8),body);fus.rotation.x=Math.PI/2;root.add(fus);const wing=new THREE.Mesh(new THREE.BoxGeometry(13,.25,3.5),accent);root.add(wing);const tail=new THREE.Mesh(new THREE.BoxGeometry(5,.3,2),body);tail.position.z=4;root.add(tail);this.group.add(root);}
+ surfaceAt(x,z,fallback){if(this.active==='city')return fallback(x,z);const b=this.bounds;return x>=b.minX&&x<=b.maxX&&z>=b.minZ&&z<=b.maxZ?this.deckY:fallback(x,z);}
+ resolveCircle(pos,r,y){if(this.active==='city')return this.city.resolveCircle(pos,r,y);const b=this.bounds;pos.x=THREE.MathUtils.clamp(pos.x,b.minX+r,b.maxX-r);pos.z=THREE.MathUtils.clamp(pos.z,b.minZ+r,b.maxZ-r);return false;}
+}
+class CombatMission {
+ constructor(scene,hud){this.scene=scene;this.hud=hud;this.targets=[];this.complete=false;this.playerHealth=100;this.elapsed=0;this.group=new THREE.Group();scene.add(this.group);}
+ build(type){this.group.clear();this.targets=[];this.complete=false;this.elapsed=0;this.playerHealth=100;this.activeName=type==='carrier'?'CARRIER STRIKE':type==='base'?'BASE ASSAULT':'CITY DEFENSE';
+  const positions=type==='carrier'?[[-22,7,-178],[22,7,-150],[-42,7,-115],[42,7,-205]]:type==='base'?[[-48,1,15],[48,1,15],[-75,1,-25],[75,1,-25]]:[[-18,18,-90],[18,18,-120],[-42,26,-155],[42,22,-185]];
+  positions.forEach((p,i)=>{const root=this.makeSoldier(i);root.position.set(...p);this.group.add(root);this.targets.push({root,alive:true,hp:2,phase:i*1.4,attack:1.5+i*.4,kind:'soldier'});});
+  for(let i=0;i<2;i++){const root=this.makeDrone();root.position.set((i?1:-1)*32,24,-190-i*25);this.group.add(root);this.targets.push({root,alive:true,hp:2,phase:i*2,attack:2,kind:'drone'});}
+ }
+ makeSoldier(i){const g=new THREE.Group(),armor=new THREE.MeshStandardMaterial({color:i%2?0x6c747b:0x39434d,metalness:.65,roughness:.4}),dark=new THREE.MeshStandardMaterial({color:0x151b22,metalness:.25,roughness:.65}),visor=new THREE.MeshBasicMaterial({color:0xff543e});const part=(geo,mat,x,y,z)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;g.add(m);return m;};part(new THREE.CapsuleGeometry(.34,.72,4,8),armor,0,1.05,0);part(new THREE.SphereGeometry(.25,10,8),dark,0,1.78,0);part(new THREE.BoxGeometry(.34,.08,.08),visor,0,1.8,-.22);for(const side of [-1,1]){part(new THREE.CapsuleGeometry(.12,.58,4,6),armor,side*.48,1.15,0);part(new THREE.CapsuleGeometry(.13,.7,4,6),dark,side*.19,.4,0);}return g;}
+ makeDrone(){const g=new THREE.Group(),m=new THREE.MeshStandardMaterial({color:0x354653,metalness:.8,roughness:.3}),red=new THREE.MeshBasicMaterial({color:0xff553e});g.add(new THREE.Mesh(new THREE.SphereGeometry(.65,12,8),m));g.add(new THREE.Mesh(new THREE.BoxGeometry(2.8,.2,.6),m));const e=new THREE.Mesh(new THREE.SphereGeometry(.18,8,6),red);e.position.z=-.55;g.add(e);return g;}
+ hit(point,hud){let found=null,dmin=7;for(const t of this.targets)if(t.alive){const d=t.root.position.distanceTo(point);if(d<dmin){found=t;dmin=d;}}if(!found)return false;found.hp--;if(found.hp<=0){found.alive=false;found.root.visible=false;}else found.root.scale.multiplyScalar(.94);if(hud)hud.toast(found.hp?'ARMOR HIT':'HOSTILE NEUTRALIZED');if(this.targets.every(t=>!t.alive)){this.complete=true;if(hud)hud.toast('MISSION COMPLETE · AREA SECURE');}return true;}
+ melee(pos,heading,type,hero,hud){const f=new THREE.Vector3(-Math.sin(heading),0,-Math.cos(heading));let target=null,best=type==='kick'?4.4:3.5;for(const t of this.targets)if(t.alive&&t.kind==='soldier'){const d=t.root.position.clone().sub(pos),forward=d.x*f.x+d.z*f.z;if(forward>-.2&&d.length()<best){best=d.length();target=t;}}if(!target){if(hud)hud.toast('NO TARGET IN RANGE');return false;}target.hp-=type==='kick'?2:1;hero.attack(type);if(target.hp<=0){target.alive=false;target.root.visible=false;if(hud)hud.toast('HOSTILE DOWN');}else if(hud)hud.toast('IMPACT · ARMOR DAMAGED');if(this.targets.every(t=>!t.alive))this.complete=true;return true;}
+ update(dt,pos,hud){this.elapsed+=dt;for(const t of this.targets)if(t.alive){t.phase+=dt;const p=t.root.position;if(t.kind==='drone'){p.y+=Math.sin(t.phase*1.4)*dt*1.1;t.root.rotation.y+=dt*.45;}else{const dx=pos.x-p.x,dz=pos.z-p.z,d=Math.hypot(dx,dz);if(d<38){t.root.rotation.y=Math.atan2(dx,dz);if(d>3.2){p.x+=dx/d*dt*2;p.z+=dz/d*dt*2;}t.attack-=dt;if(d<18&&t.attack<=0){this.playerHealth=Math.max(0,this.playerHealth-5);t.attack=2.4;if(hud)hud.toast('J.A.R.V.I.S.: INCOMING FIRE');}}}}
+  const alive=this.targets.filter(t=>t.alive).length,el=document.getElementById('mission');if(el)el.textContent=this.complete?'OBJECTIVE COMPLETE · AREA SECURE':'OPERATION '+this.activeName+' · HOSTILES '+alive+'/'+this.targets.length;const hv=document.getElementById('healthValue');if(hv)hv.textContent=Math.round(this.playerHealth)+'%';
+ }
+}
+
 // ===== main.js =====
 
 let gameStarted = false;
