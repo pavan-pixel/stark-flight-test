@@ -1675,11 +1675,12 @@ class MissionEnvironment {
  }
  makeJet(x,z,body,accent){
   const root=new THREE.Group();root.position.set(x,this.deckY+1,z);
+  const engineMat=this.mat(0x202a32,.72,.35);
   const fus=new THREE.Mesh(new THREE.CapsuleGeometry(.85,8.5,4,8),body);fus.rotation.x=Math.PI/2;root.add(fus);
   const nose=new THREE.Mesh(new THREE.ConeGeometry(.84,4.2,8),body);nose.rotation.x=-Math.PI/2;nose.position.z=-6.2;root.add(nose);
   const wing=new THREE.Mesh(new THREE.BoxGeometry(15,.32,4.4),accent);wing.position.z=.4;root.add(wing);
   const tail=new THREE.Mesh(new THREE.BoxGeometry(5,.3,2.6),body);tail.position.set(0,.9,4.5);root.add(tail);
-  for(const side of [-1,1]){const fin=new THREE.Mesh(new THREE.BoxGeometry(.28,2.4,2.2),body);fin.position.set(side*1.4,1.1,4.1);fin.rotation.z=side*.12;root.add(fin);const engine=new THREE.Mesh(new THREE.CylinderGeometry(.42,.52,2.4,8),dark);engine.rotation.x=Math.PI/2;engine.position.set(side*1.6,-.15,2.7);root.add(engine);}
+  for(const side of [-1,1]){const fin=new THREE.Mesh(new THREE.BoxGeometry(.28,2.4,2.2),body);fin.position.set(side*1.4,1.1,4.1);fin.rotation.z=side*.12;root.add(fin);const engine=new THREE.Mesh(new THREE.CylinderGeometry(.42,.52,2.4,8),engineMat);engine.rotation.x=Math.PI/2;engine.position.set(side*1.6,-.15,2.7);root.add(engine);}
   const cockpit=new THREE.Mesh(new THREE.SphereGeometry(.78,10,8),glass);cockpit.scale.set(.75,.5,1.55);cockpit.position.set(0,.72,-2.4);root.add(cockpit);
   this.group.add(root);
  }
@@ -1772,7 +1773,10 @@ class CombatMission {
   const playerAim=pos.clone().add(new THREE.Vector3(0,1.15,0));
   for(let i=this.enemyShots.length-1;i>=0;i--){
    const s=this.enemyShots[i],previous=s.mesh.position.clone();s.mesh.position.addScaledVector(s.velocity,dt);s.life-=dt;
-   if(s.mesh.position.distanceTo(playerAim)<1.35){
+   const segment=s.mesh.position.clone().sub(previous),den=segment.lengthSq();
+   const u=den>1e-8?THREE.MathUtils.clamp(playerAim.clone().sub(previous).dot(segment)/den,0,1):0;
+   const closest=previous.addScaledVector(segment,u);
+   if(closest.distanceTo(playerAim)<1.55){
     this.playerHealth=Math.max(0,this.playerHealth-8);s.life=0;if(hud)hud.toast(this.playerHealth?'INCOMING FIRE · SUIT -8%':'SUIT CRITICAL · RETREAT');
    }
    if(s.life<=0){this.group.remove(s.mesh);this.enemyShots.splice(i,1);}
