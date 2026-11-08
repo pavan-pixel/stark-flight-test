@@ -665,15 +665,44 @@ class NYCWorld {
     const span=Math.max(size.x,size.z);
     if(!Number.isFinite(span)||span<1) throw new Error('NYC model has invalid dimensions');
 
+    // Do not use the absolute lowest vertex as street level. This FBX contains
+    // one large below-grade mesh whose minimum sits ~110 source units below
+    // the dominant building-base plane. Align the dense mesh-floor cluster
+    // instead, otherwise the playable city floats above the player spawn.
+    const meshFloorYs=[];
+    root.traverse(o=>{
+      if(!o.isMesh || !o.visible || !o.geometry?.attributes?.position?.count)return;
+      const box=new THREE.Box3().setFromObject(o);
+      if(!box.isEmpty() && Number.isFinite(box.min.y)) meshFloorYs.push(box.min.y);
+    });
+    let groundDatum=this.bounds.min.y;
+    if(meshFloorYs.length>=8){
+      meshFloorYs.sort((a,b)=>a-b);
+      const windowSize=Math.max(8,size.y*.12);
+      let bestStart=0,bestEnd=0,end=0;
+      for(let start=0;start<meshFloorYs.length;start++){
+        end=Math.max(end,start);
+        while(end<meshFloorYs.length && meshFloorYs[end]-meshFloorYs[start]<=windowSize)end++;
+        if(end-start>bestEnd-bestStart){bestStart=start;bestEnd=end;}
+      }
+      const cluster=meshFloorYs.slice(bestStart,bestEnd);
+      if(cluster.length>=Math.max(8,Math.ceil(meshFloorYs.length*.2))){
+        groundDatum=cluster[Math.floor(cluster.length/2)];
+      }
+    }
+
     const targetSpan=this.perf.isMobile?1180:1680, scale=targetSpan/span;
     root.scale.setScalar(scale);
     root.updateMatrixWorld(true);
     this.bounds.setFromObject(root);
     const center=this.bounds.getCenter(new THREE.Vector3());
-    root.position.set(-center.x,-this.bounds.min.y,-center.z);
+    // Center the footprint horizontally, but align the dominant street datum
+    // to Y=0. Below-grade outliers are allowed to remain below the street.
+    root.position.set(-center.x,-groundDatum*scale,-center.z);
     root.updateMatrixWorld(true);
     this.bounds.setFromObject(root);
     size=this.bounds.getSize(new THREE.Vector3());
+    this.groundDatum=groundDatum;
     if(![size.x,size.y,size.z,this.bounds.min.y].every(Number.isFinite) ||
        size.x<10 || size.z<10 || size.y<1) {
       throw new Error('NYC world bounds failed validation: '+size.x.toFixed(1)+' × '+size.y.toFixed(1)+' × '+size.z.toFixed(1));
