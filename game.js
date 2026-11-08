@@ -1374,7 +1374,7 @@ async function boot() {
   perf.onTierChange = t => { sm.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio)); city.setRadii(t.nearRadius, t.farRadius); hud.toast('QUALITY: ' + t.name.toUpperCase()); };
 
   hud.setLoading('READING ASSET ARCHIVES', 2);
-  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip', 'stark-next-animations.zip', 'stark-next-city.zip', 'stark-next-apartments.zip', 'kenney_city-kit-commercial_2_1.zip', 'stark-environment-pack.zip', 'stark-nyc-world.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
+  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip', 'stark-next-animations.zip', 'stark-next-city.zip', 'stark-next-apartments.zip', 'kenney_city-kit-commercial_2_1.zip', 'stark-environment-pack.zip', 'stark-nyc-world-optimized.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
   // Hero first (playable immediately), city second; either failure is reported and never blocks the loop.
   let heroOk = true, cityOk = true, nycOk = false;
   await Promise.all([
