@@ -1403,7 +1403,7 @@ async function boot() {
     hero.update(dt, move.flying ? 1 : 0, move.speed, inp.boost, move.mode, move.vel.y, inp.hover);
     city.update(move.pos);
     traffic.update(dt, move.pos);
-    rep.update(dt, inp.boost, mission, hud); mission.update(dt, hud); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
+    rep.update(dt, inp.boost, mission, hud); mission.update(dt, move.pos, hud); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
     if (cine.enabled) cine.update(dt, move); else if(cameraMode==='FIRST'){const eye=hero.root.position.clone().add(new THREE.Vector3(0,1.62,0));sm.camera.position.copy(eye);const a=move.heading+cam.yaw;sm.camera.lookAt(eye.x-Math.sin(a)*30,eye.y-Math.sin(cam.pitch)*8,eye.z-Math.cos(a)*30);sm.camera.fov=THREE.MathUtils.damp(sm.camera.fov,move.flying?76:68,5,dt);sm.camera.updateProjectionMatrix();}else cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed });
     hud.readout(move.mode, move.pos.y, move.speed * 3.6, rep.energy);document.getElementById('helmetEnergy').textContent=Math.round(rep.energy)+'%';drawMiniMap(move.pos, move.heading, mission);
     sm.render(move.pos, { speed: move.speed, boost: inp.boost });
