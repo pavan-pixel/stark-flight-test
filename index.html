@@ -16,7 +16,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 .top{position:absolute;top:max(12px,env(safe-area-inset-top));left:max(15px,env(safe-area-inset-left));right:max(15px,env(safe-area-inset-right));display:flex;justify-content:space-between}
 .brand{font-size:11px;letter-spacing:.28em;color:var(--cyan);font-weight:800}.sub{font-size:9px;letter-spacing:.15em;color:#7893a8;margin-top:4px}
 .readout{text-align:right;font:10px/1.8 ui-monospace,monospace;color:#b8d5e8}.readout b{color:var(--cyan)}
-.bottom{position:absolute;left:max(14px,env(safe-area-inset-left));right:max(14px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));display:flex;justify-content:space-between;align-items:flex-end}
+.mission{position:absolute;left:50%;top:15%;transform:translateX(-50%);width:min(430px,70vw);padding:10px 14px;border:1px solid #74dfff55;border-radius:10px;background:linear-gradient(120deg,#061321cc,#0a1c2acc);text-align:center;backdrop-filter:blur(8px);text-shadow:0 1px 8px #000}.mission b{display:block;font:800 10px ui-monospace,monospace;letter-spacing:.16em;color:#8deeff}.mission span{display:block;margin-top:5px;font:9px/1.5 ui-monospace,monospace;color:#b8d0df}.bottom{position:absolute;left:max(14px,env(safe-area-inset-left));right:max(14px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));display:flex;justify-content:space-between;align-items:flex-end}
 .joystick{pointer-events:auto;position:relative;width:112px;height:112px;border:1px solid #7bdfff66;border-radius:50%;background:#071b2b99;touch-action:none}
 .stick{position:absolute;width:44px;height:44px;left:33px;top:33px;border-radius:50%;border:1px solid #9aeaff;background:radial-gradient(circle at 35% 30%,#b9f7ff,#24617d);box-shadow:0 0 18px #48cfff66}
 .hint{font:9px/1.6 ui-monospace,monospace;letter-spacing:.1em;color:#91aabd;margin-top:7px}
@@ -38,13 +38,13 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 <div id="ui">
  <div class="top"><div><div class="brand">STARK INDUSTRIES</div><div class="sub">MARK 85 // OPEN CITY BUILD // M21</div><div class="sub" id="assetstat"></div></div>
   <div class="readout">MODE <b id="mode">WALK</b><br>ALT <b id="alt">GROUND</b><br>SPD <b id="spd">0</b><br>NRG <b id="nrg">100</b></div></div>
- <div id="toast"></div>
+ <div id="toast"></div><div class="mission" id="mission"><b id="missionTitle">OPERATION: IRON AWAKENING</b><span id="missionDetail">Press FLY to ignite the Mark 85 thrusters</span></div>
  <div class="bottom"><div><div class="joystick" id="joy"><div class="stick" id="stick"></div></div><div class="hint">MOVE RELATIVE TO CAMERA<br>SWIPE ANYWHERE · LOOK</div></div>
  <div class="controls">
   <button class="btn" id="run">RUN</button><button class="btn gold" id="fly">FLY</button>
   <button class="btn" id="up" hidden>UP</button><button class="btn" id="down" hidden>DOWN</button>
   <button class="btn gold" id="land" hidden>LAND</button><button class="btn" id="hover" hidden>HOVER</button>
-  <button class="btn gold" id="boost" hidden>BOOST</button><button class="btn red" id="fire" hidden>FIRE</button>
+  <button class="btn gold" id="boost" hidden>BOOST</button><button class="btn red" id="fire" hidden>FIRE</button><button class="btn" id="cameraMode">AUTO CAM</button>
  </div></div>
 </div>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
@@ -58,5 +58,5 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
  document.addEventListener('touchmove',function(e){e.preventDefault()},{passive:false});
 })();
 </script>
-<script type="module" src="./game.js?v=m34"></script>
+<script type="module" src="./game.js?v=m35"></script>
 </body></html>
