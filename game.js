@@ -731,11 +731,12 @@ class NYCWorld {
     });
     if(!meshCount || !visibleMeshes) throw new Error('NYC FBX has no visible renderable meshes');
     this.meshCount=meshCount;
-    this.meshes=[]; this.meshBounds=[];
+    this.meshes=[]; this.meshBounds=[]; this.meshRayBounds=[]; this.surfaceCache={x:NaN,z:NaN,y:0};
     root.traverse(o=>{
       if(!o.isMesh || !o.visible || !o.geometry?.attributes?.position?.count)return;
       this.meshes.push(o);
       const box=new THREE.Box3().setFromObject(o);
+      this.meshRayBounds.push({mesh:o,box});
       const s=box.getSize(new THREE.Vector3());
       // Retain plausible building/structure bounds for inexpensive broad-phase collision.
       if(s.x<260 && s.z<260 && s.y>1.2) this.meshBounds.push(box);
@@ -757,11 +758,15 @@ class NYCWorld {
     if(!this.ready || !this.meshes?.length) return this.groundY;
     // Always cast from above the complete authored world. Starting at playerY+8
     // misses streets when the player has spawned beneath a misaligned FBX.
+    const cache=this.surfaceCache;
+    if(Math.hypot(x-cache.x,z-cache.z)<0.45) return cache.y;
     const startY=Math.max(this.bounds.max.y+20,currentY+80,100);
     this.raycaster.set(new THREE.Vector3(x,startY,z),this.rayDown);
     this.raycaster.near=0; this.raycaster.far=Math.max(20,startY-this.bounds.min.y+5);
-    const hits=this.raycaster.intersectObjects(this.meshes,false);
-    return hits.length ? hits[0].point.y : this.groundY;
+    const candidates=this.meshRayBounds.filter(v=>x>=v.box.min.x-0.1&&x<=v.box.max.x+0.1&&z>=v.box.min.z-0.1&&z<=v.box.max.z+0.1&&v.box.min.y<=startY&&v.box.max.y>=this.bounds.min.y);
+    const hits=this.raycaster.intersectObjects(candidates.map(v=>v.mesh),false);
+    cache.x=x; cache.z=z; cache.y=hits.length?hits[0].point.y:this.groundY;
+    return cache.y;
   }
   resolveCircle(pos,r,y){
     if(!this.ready || !this.meshBounds?.length) return false;
@@ -787,7 +792,9 @@ class NYCWorld {
   raycast(origin,dir,maxDist){
     if(!this.ready || !this.meshes?.length) return maxDist;
     this.raycaster.set(origin,dir); this.raycaster.near=0.05; this.raycaster.far=maxDist;
-    const hits=this.raycaster.intersectObjects(this.meshes,false);
+    const ray=this.raycaster.ray;
+    const candidates=this.meshRayBounds.filter(v=>v.box.intersectsRay(ray)).map(v=>v.mesh);
+    const hits=this.raycaster.intersectObjects(candidates,false);
     return hits.length?hits[0].distance:maxDist;
   }
   activate(){
