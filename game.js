@@ -665,7 +665,7 @@ class IronMan {
     this.root.add(this.tilt);
     this.model = null; this.bones = {}; this.glows = []; this.height = 1.9; this.fallback = false;
     this.flying = 0;                 // 0..1 thruster intensity
-    this.attackState = null; this.attackTime = 0; this.attackDuration = 0.42;
+    this.attackState = null; this.attackTime = 0; this.attackDuration = 0.42; this.attackBase = {};
   }
 
   async load(progress = () => {}) {
@@ -779,7 +779,7 @@ class IronMan {
     if (!this.actions.idle) this.assets.onError('ANIM: idle clip unavailable; suit will use bind pose');
     this.play('idle');
   }
-  attack(type='punch') { this.attackState=type; this.attackTime=0; this.firePulse=.22; }
+  attack(type='punch') { this.attackState=type; this.attackTime=0; this.firePulse=.22; for(const id of ['lArm','rArm','lLeg','rLeg']){const b=this.bones[id];if(b)this.attackBase[id]={x:b.rotation.x,y:b.rotation.y,z:b.rotation.z};} }
   play(name, oneShot = false) {
     const next = this.actions && this.actions[name];
     if (!next || next === this.current) return;
@@ -828,7 +828,7 @@ class IronMan {
       this.play(desired, oneShot);
       this.previousMode = mode;
     }
-    if(this.attackState){this.attackTime+=dt;const t=Math.min(1,this.attackTime/this.attackDuration),wave=Math.sin(t*Math.PI);const arm=this.bones[this.attackState==='punch'?'rArm':'lArm'];const leg=this.bones[this.attackState==='kick'?'rLeg':'lLeg'];if(arm)arm.rotation.z+=(this.attackState==='punch'?-0.95:0.35)*wave*dt*18;if(this.attackState==='kick'&&leg)leg.rotation.x+=0.9*wave*dt*16;if(t>=1)this.attackState=null;}
+    if(this.attackState){this.attackTime+=dt;const t=Math.min(1,this.attackTime/this.attackDuration),wave=Math.sin(t*Math.PI);const arm=this.bones[this.attackState==='punch'?'rArm':'lArm'];const leg=this.bones[this.attackState==='kick'?'rLeg':'lLeg'];if(arm&&this.attackBase[this.attackState==='punch'?'rArm':'lArm']){const base=this.attackBase[this.attackState==='punch'?'rArm':'lArm'];arm.rotation.z=base.z+(this.attackState==='punch'?-0.95:0.35)*wave;}if(this.attackState==='kick'&&leg&&this.attackBase.rLeg){leg.rotation.x=this.attackBase.rLeg.x+0.9*wave;}if(t>=1){for(const [id,v] of Object.entries(this.attackBase)){const b=this.bones[id];if(b)b.rotation.set(v.x,v.y,v.z);}this.attackBase={};this.attackState=null;}}
     const p = new THREE.Vector3();
     this.root.updateMatrixWorld(true);
     for (const s of this.glows) {
@@ -1244,7 +1244,7 @@ class StoryMission {
 // ===== missions/MissionEnvironment.js =====
 class MissionEnvironment {
  constructor(scene,city){this.scene=scene;this.city=city;this.group=new THREE.Group();scene.add(this.group);this.active='carrier';this.deckY=7;this.bounds={minX:-82,maxX:82,minZ:-278,maxZ:-32};this.spawn=new THREE.Vector3(0,7,-245);}
- clear(){while(this.group.children.length){const o=this.group.children.pop();this.group.remove(o);}}
+ clear(){while(this.group.children.length)this.group.remove(this.group.children[0]);}
  mat(color,metalness=.15,roughness=.72){return new THREE.MeshStandardMaterial({color,metalness,roughness});}
  box(w,h,d,material,x,y,z){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;this.group.add(m);return m;}
  setMission(type='carrier'){
@@ -1376,10 +1376,11 @@ async function boot() {
   let cameraMode='THIRD', lockedTarget=null;
   hud.on('attack', type => { if(!gameStarted || move.flying)return; mission.melee(move.pos,move.heading,type,hero,hud); cam.bump(type==='kick'?.13:.08); });
   hud.on('view', () => { cameraMode=cameraMode==='THIRD'?'FIRST':'THIRD'; document.getElementById('view').textContent=cameraMode==='FIRST'?'HELMET':'3RD PERSON'; document.getElementById('helmetHud').classList.toggle('active',cameraMode==='FIRST'); hud.toast(cameraMode==='FIRST'?'HELMET VIEW':'THIRD-PERSON VIEW'); });
-  hud.on('lock', () => { lockedTarget=mission.targets.find(t=>t.alive)||null; hud.toast(lockedTarget?'TARGET ACQUIRED':'NO HOSTILE SIGNAL'); });
+  hud.on('lock', () => { const alive=mission.targets.filter(t=>t.alive);lockedTarget=alive.length?alive.reduce((best,t)=>t.root.position.distanceTo(move.pos)<best.root.position.distanceTo(move.pos)?t:best):null;document.getElementById('targetStatus').textContent=lockedTarget?'LOCKED':'NO SIGNAL';hud.toast(lockedTarget?'TARGET ACQUIRED':'NO HOSTILE SIGNAL'); });
   hud.on('fire', () => {
     if (!gameStarted) return;
     dir.set(-Math.sin(move.heading + cam.yaw), -Math.sin(cam.pitch) * 0.3, -Math.cos(move.heading + cam.yaw)).normalize();
+    if(lockedTarget?.alive){const aim=lockedTarget.root.position.clone().sub(hero.root.position.clone().add(new THREE.Vector3(0,1.2,0))).normalize();dir.lerp(aim,0.78).normalize();}
     const o = [hero.worldPosOf('lHand', new THREE.Vector3()), hero.worldPosOf('rHand', new THREE.Vector3())];
     if (rep.fire(o, dir)) { cam.bump(0.08); hero.firePulse = 0.18; }
   });
@@ -1404,7 +1405,7 @@ async function boot() {
     traffic.update(dt, move.pos);
     rep.update(dt, inp.boost, mission, hud); mission.update(dt, hud); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
     if (cine.enabled) cine.update(dt, move); else if(cameraMode==='FIRST'){const eye=hero.root.position.clone().add(new THREE.Vector3(0,1.62,0));sm.camera.position.copy(eye);const a=move.heading+cam.yaw;sm.camera.lookAt(eye.x-Math.sin(a)*30,eye.y-Math.sin(cam.pitch)*8,eye.z-Math.cos(a)*30);sm.camera.fov=THREE.MathUtils.damp(sm.camera.fov,move.flying?76:68,5,dt);sm.camera.updateProjectionMatrix();}else cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed });
-    hud.readout(move.mode, move.pos.y, move.speed * 3.6, rep.energy); drawMiniMap(move.pos, move.heading, mission);
+    hud.readout(move.mode, move.pos.y, move.speed * 3.6, rep.energy);document.getElementById('helmetEnergy').textContent=Math.round(rep.energy)+'%';drawMiniMap(move.pos, move.heading, mission);
     sm.render(move.pos, { speed: move.speed, boost: inp.boost });
   })();
 }
