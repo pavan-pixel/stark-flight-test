@@ -731,6 +731,17 @@ class NYCWorld {
     });
     if(!meshCount || !visibleMeshes) throw new Error('NYC FBX has no visible renderable meshes');
     this.meshCount=meshCount;
+    this.meshes=[]; this.meshBounds=[];
+    root.traverse(o=>{
+      if(!o.isMesh || !o.visible || !o.geometry?.attributes?.position?.count)return;
+      this.meshes.push(o);
+      const box=new THREE.Box3().setFromObject(o);
+      const s=box.getSize(new THREE.Vector3());
+      // Retain plausible building/structure bounds for inexpensive broad-phase collision.
+      if(s.x<260 && s.z<260 && s.y>1.2) this.meshBounds.push(box);
+    });
+    this.raycaster=new THREE.Raycaster();
+    this.rayDown=new THREE.Vector3(0,-1,0);
     this.orientation=upAxis.toUpperCase()+'-UP (auto)';
     this.worldSize=size.clone();
     this.group.add(root);
@@ -740,6 +751,42 @@ class NYCWorld {
     this.fallbackCity.group.visible=true;
     progress('NYC WORLD READY · '+meshCount+' MESHES · '+this.orientation,100);
     return true;
+  }
+  // Query the authored NYC FBX instead of the hidden procedural city's grid.
+  surfaceAt(x,z,currentY=0){
+    if(!this.ready || !this.meshes?.length) return this.groundY;
+    const startY=Math.max(currentY+3, currentY<5?8:currentY+80);
+    this.raycaster.set(new THREE.Vector3(x,startY,z),this.rayDown);
+    this.raycaster.near=0; this.raycaster.far=Math.max(20,startY-this.bounds.min.y+5);
+    const hits=this.raycaster.intersectObjects(this.meshes,false);
+    return hits.length ? hits[0].point.y : this.groundY;
+  }
+  resolveCircle(pos,r,y){
+    if(!this.ready || !this.meshBounds?.length) return false;
+    let hit=false;
+    for(const b of this.meshBounds){
+      if(y+1.8 < b.min.y || y > b.max.y+0.5 ||
+         pos.x < b.min.x-r || pos.x > b.max.x+r ||
+         pos.z < b.min.z-r || pos.z > b.max.z+r) continue;
+      const nx=Math.max(b.min.x,Math.min(pos.x,b.max.x));
+      const nz=Math.max(b.min.z,Math.min(pos.z,b.max.z));
+      const dx=pos.x-nx,dz=pos.z-nz,d2=dx*dx+dz*dz;
+      if(d2>=r*r) continue;
+      hit=true;
+      if(d2>1e-6){const d=Math.sqrt(d2);pos.x=nx+dx/d*r;pos.z=nz+dz/d*r;}
+      else{
+        const e=[pos.x-b.min.x,b.max.x-pos.x,pos.z-b.min.z,b.max.z-pos.z],m=Math.min(...e);
+        if(m===e[0])pos.x=b.min.x-r;else if(m===e[1])pos.x=b.max.x+r;
+        else if(m===e[2])pos.z=b.min.z-r;else pos.z=b.max.z+r;
+      }
+    }
+    return hit;
+  }
+  raycast(origin,dir,maxDist){
+    if(!this.ready || !this.meshes?.length) return maxDist;
+    this.raycaster.set(origin,dir); this.raycaster.near=0.05; this.raycaster.far=maxDist;
+    const hits=this.raycaster.intersectObjects(this.meshes,false);
+    return hits.length?hits[0].distance:maxDist;
   }
   activate(){
     if(!this.ready || !this.meshCount) return false;
@@ -1049,7 +1096,7 @@ class MovementController {
 
     // Altitude state machine.
     if (this.mode === MODE.FLY) this.targetAlt = THREE.MathUtils.clamp(this.targetAlt + (inp.up - inp.down) * (inp.boost ? 40 : 16) * dt, 2, 420);
-    const ground = city.surfaceAt(this.pos.x, this.pos.z);
+    const ground = city.surfaceAt(this.pos.x, this.pos.z, this.pos.y);
     if (this.mode === MODE.LANDING) this.targetAlt = ground; // M2: descend onto whatever is below, roof or street
     const climb = this.mode === MODE.TAKEOFF ? 1.25 : this.mode === MODE.LANDING ? 1.35 : 2.0;
     this.pos.y = THREE.MathUtils.damp(this.pos.y, Math.max(this.targetAlt, ground), climb, dt);
@@ -1513,9 +1560,10 @@ async function boot() {
   const mission = new CombatMission(sm.scene, hud);
   const traffic = new TrafficSystem(sm.scene, perf);
   cam.attach(sm.renderer.domElement);
-  const citySurfaceAt = city.surfaceAt.bind(city), cityResolveCircle = city.resolveCircle.bind(city);
-  city.surfaceAt = (x,z) => missionEnv.surfaceAt(x,z,citySurfaceAt);
-  city.resolveCircle = (pos,r,y) => missionEnv.active==='city' ? cityResolveCircle(pos,r,y) : missionEnv.resolveCircle(pos,r,y);
+  const citySurfaceAt = city.surfaceAt.bind(city), cityResolveCircle = city.resolveCircle.bind(city), cityRaycast = city.raycast.bind(city);
+  city.surfaceAt = (x,z,currentY=0) => nycWorld.group.visible ? nycWorld.surfaceAt(x,z,currentY) : missionEnv.surfaceAt(x,z,citySurfaceAt);
+  city.resolveCircle = (pos,r,y) => nycWorld.group.visible ? nycWorld.resolveCircle(pos,r,y) : (missionEnv.active==='city' ? cityResolveCircle(pos,r,y) : missionEnv.resolveCircle(pos,r,y));
+  city.raycast = (origin,dir,maxDist) => nycWorld.group.visible ? nycWorld.raycast(origin,dir,maxDist) : cityRaycast(origin,dir,maxDist);
   missionEnv.setMission('city'); mission.build('city'); move.pos.set(0,0,0);
   sm.scene.add(hero.root);
   perf.onTierChange = t => { sm.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio)); city.setRadii(t.nearRadius, t.farRadius); hud.toast('QUALITY: ' + t.name.toUpperCase()); };
