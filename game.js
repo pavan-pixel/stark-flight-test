@@ -1027,7 +1027,7 @@ class HUD {
     $('land').addEventListener('click', () => this.handlers.land && this.handlers.land());
     $('fire').addEventListener('click', () => this.handlers.fire && this.handlers.fire());
     $('startGame').addEventListener('click', () => this.handlers.start && this.handlers.start());
-    $('openTutorial').addEventListener('click', () => $('tutorial').classList.add('show'));
+    $('openTutorial').addEventListener('click', () => { $('tutorial').classList.add('show'); if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance('Sir, use the left control pad to move. Drag the screen to look around. Select fly to take off. Use up and down to control altitude. Boost for speed, fire to discharge the repulsors, and land near a safe surface.'); u.rate = 0.94; u.pitch = 0.88; window.speechSynthesis.speak(u); } });
     $('closeTutorial').addEventListener('click', () => $('tutorial').classList.remove('show'));
     $('cine').addEventListener('click', () => this.handlers.cine && this.handlers.cine());
     this._hold('boost', 'boost', true); this._hold('up', 'up', 1); this._hold('down', 'down', 1);
@@ -1207,7 +1207,7 @@ class CinematicDirector {
   if(this.mode==='INTRO'){
    const t=THREE.MathUtils.clamp(this.time/this.duration,0,1),e=t*t*(3-2*t);
    p.set(h.x+1.5,h.y+1.9,h.z+2.4).lerp(new THREE.Vector3(h.x-f.x*9+3,h.y+4.8,h.z-f.z*9+11),e);
-   if(t>=1){this.mode='FOLLOW';this.time=0;}
+   if(t>=1){const completed=this.mode;this.mode='FOLLOW';this.time=0;if(completed!=='INTRO')this.enabled=false;}
   }else if(this.mode==='TAKEOFF'||this.mode==='BOOST'||this.mode==='LANDING'){
    const t=THREE.MathUtils.clamp(this.time/this.duration,0,1);
    const d=this.mode==='BOOST'?15: this.mode==='LANDING'?8:7;
@@ -1285,9 +1285,25 @@ async function boot() {
 
   hud.on('fly', () => { if (move.takeoff()) { hud.setFlightUI(true); cam.bump(0.05); cine.trigger('TAKEOFF', 1.7); hud.toast('TAKEOFF — THRUSTERS ENGAGED'); } });
   hud.on('land', () => { if (move.land()) { cine.trigger('LANDING', 2.0); hud.toast('LANDING'); } });
+  const briefings = {
+    overview:['GOOD EVENING, SIR.','All systems are operational. The Mark 85 is ready for deployment. I recommend reviewing the flight controls before entering the city.','Select a database category. I will brief you on the selected system.'],
+    city:['CITY GRID / ONLINE','The urban environment is available for exploration. I recommend maintaining a safe altitude near dense structures.','Use the minimap to maintain your heading and locate mission contacts.'],
+    districts:['DISTRICT DATABASE','The city is divided into navigable sectors. Buildings and road corridors provide visual landmarks for orientation.','Explore the city before engaging a mission target.'],
+    suit:['MARK 85 / ARMOR SYSTEMS','The suit integrates an arc reactor, repulsor emitters and boot propulsion. Energy reserves are shared between sustained boost and repulsor discharge.','Monitor energy consumption during extended flight.'],
+    flight:['FLIGHT CONTROL / TRAINING','Takeoff engages the boot thrusters. Directional input steers the suit; UP and DOWN control altitude. Boost increases speed and energy consumption.','Practice hovering and controlled landing before high-speed flight.'],
+    story:['PROTOCOL 01 / HOSTILE CONTACT','Three hostile drone signatures have been detected in the forward sector. Approach, align the repulsors and neutralize each target.','Track hostile signatures on the minimap.']
+  };
+  document.querySelectorAll('.dbTab').forEach(btn => btn.addEventListener('click', () => {
+    document.querySelectorAll('.dbTab').forEach(b => b.classList.toggle('active', b === btn));
+    const v = briefings[btn.dataset.topic] || briefings.overview;
+    document.getElementById('jarvisTitle').textContent = v[0];
+    document.getElementById('jarvisText').textContent = v[1];
+    document.getElementById('jarvisHint').textContent = v[2];
+    document.getElementById('jarvisTag').textContent = 'SYSTEM BRIEFING / ' + btn.dataset.topic.toUpperCase();
+    if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(v[1]); u.rate = 0.94; u.pitch = 0.88; window.speechSynthesis.speak(u); }
+  }));
   hud.on('start', () => { gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); cine.enabled = false; });
 
-  hud.on('cine', () => { const on=cine.toggle(); hud.toast(on?'CINEMATIC CAMERA':'MANUAL CAMERA'); });
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   hud.on('fire', () => {
     if (!gameStarted || !move.flying) return;

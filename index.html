@@ -35,12 +35,64 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #toast{position:absolute;top:24%;left:50%;transform:translateX(-50%);font:10px ui-monospace,monospace;letter-spacing:.12em;color:#9fefff;opacity:0;white-space:nowrap;transition:opacity .25s}
 @media(orientation:portrait){#rotate{display:flex}}
 @media(max-height:420px){.joystick{width:96px;height:96px}.stick{left:26px;top:26px}.btn{width:50px;height:50px}.controls{gap:6px}}
+
+#mainmenu{display:block;overflow:hidden;background:linear-gradient(115deg,rgba(8,2,8,.93),rgba(13,5,12,.68) 42%,rgba(2,9,17,.56));font-family:Arial,system-ui,sans-serif;color:#e9e7e8}
+.databaseTop,.databaseBottom{height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;color:#f06a65;font:9px ui-monospace,monospace;letter-spacing:.15em;border-bottom:1px solid #a93c3b66}
+.databaseBottom{position:absolute;bottom:0;left:0;right:0;border-top:1px solid #a93c3b66;border-bottom:0;color:#8e6569}
+.databaseLayout{height:calc(100% - 68px);display:grid;grid-template-columns:minmax(170px,23%) minmax(180px,36%) minmax(220px,41%);padding:18px 22px;gap:18px}
+.databaseNav{display:flex;flex-direction:column;gap:7px;border-right:1px solid #923b3d55;padding-right:14px}
+.navLabel,.jarvisHint{font:9px ui-monospace,monospace;letter-spacing:.2em;color:#ed625d;margin:6px 0 12px}
+.dbTab{height:38px;text-align:left;padding:0 9px;background:linear-gradient(90deg,#291015aa,#100c12aa);border:1px solid #87343777;color:#d7b8b8;font:9px ui-monospace,monospace;letter-spacing:.08em}
+.dbTab span{color:#ed625d;margin-right:8px}.dbTab i{float:right;color:#ed625d;font-style:normal}.dbTab.active{border-color:#ff6963;background:linear-gradient(90deg,#552024aa,#160c13)}
+.navFoot{margin-top:auto;color:#76565b;font:8px/1.8 ui-monospace,monospace;letter-spacing:.12em}
+.databaseHero{position:relative;display:flex;flex-direction:column;justify-content:flex-start;padding:18px 8px;background:radial-gradient(ellipse at 50% 56%,#1d344566,transparent 58%),linear-gradient(180deg,#0b111a22,#10101811);border-left:1px solid #8b353955;border-right:1px solid #8b353955;overflow:hidden}
+.heroScan{font:8px ui-monospace,monospace;color:#f07168;letter-spacing:.15em}.heroTitle{margin-top:12px;font-size:clamp(22px,4vw,42px);font-weight:900;letter-spacing:.08em;color:#eee}.heroTitle b{color:#f26a65}.heroSub{font:8px ui-monospace,monospace;color:#8d9ca8;letter-spacing:.12em}.heroReticle{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:95px;height:95px;border:1px solid #f16b6544;border-radius:50%;display:grid;place-items:center;color:#f16b65;font-size:25px}.heroReticle:before,.heroReticle:after{content:"";position:absolute;background:#f16b6566}.heroReticle:before{width:130%;height:1px}.heroReticle:after{height:130%;width:1px}.heroBottom{margin-top:auto;display:flex;justify-content:space-between;color:#8da0aa;font:8px ui-monospace,monospace}.heroBottom b{color:#f07870}
+.jarvisPanel{padding:14px 10px 8px 18px;display:flex;flex-direction:column;overflow:auto}
+.jarvisHeader{font:11px ui-monospace,monospace;letter-spacing:.16em;color:#f06b65;display:flex;align-items:center;gap:8px}.jarvisHeader small{font-size:7px;color:#967579;margin-left:auto}.jarvisDot{width:7px;height:7px;border-radius:50%;background:#f06b65;box-shadow:0 0 9px #f06b65}
+.jarvisTag{margin-top:32px;color:#a24b4c;font:8px ui-monospace,monospace;letter-spacing:.16em}.jarvisTitle{font-size:clamp(16px,2vw,24px);font-weight:800;color:#f07870;margin:10px 0 12px;letter-spacing:.04em}.jarvisText{font-size:clamp(10px,1.2vw,12px);line-height:1.65;color:#c4b4b8;max-width:500px}.jarvisRule{height:1px;background:#8e383866;margin:22px 0 12px}.menuActions{display:flex;gap:9px;margin-top:auto;padding-top:18px;flex-wrap:wrap}.menuBtn{border:1px solid #b44b4c;background:#210f17;color:#e7d8da;padding:12px 16px;border-radius:2px;font-size:9px;letter-spacing:.15em}.menuBtn.primary{background:linear-gradient(90deg,#67242a,#35151e);border-color:#fa7770;box-shadow:0 0 16px #ed4c4522}
+#tutorial{background:rgba(3,6,12,.94)}.tutorialCard{border:1px solid #a64b4b;background:linear-gradient(135deg,#180d15,#07121d);border-radius:2px;max-width:500px;font:11px/1.7 Arial,sans-serif}.tutorialCard h2{color:#f07870;letter-spacing:.08em;font-size:17px}.tutorialCard p{margin:8px 0;color:#c8b9bd}.jarvisQuote{color:#f28a81!important;font-style:italic}
+@media(max-width:700px){.databaseTop,.databaseBottom{padding:0 10px;font-size:7px}.databaseLayout{grid-template-columns:34% 1fr;grid-template-rows:1fr auto;padding:10px;gap:8px}.databaseHero{display:none}.databaseNav{padding-right:7px}.dbTab{font-size:7px;height:42px;padding:0 5px}.dbTab span{margin-right:3px}.jarvisPanel{padding:10px 5px}.jarvisHeader{font-size:9px}.jarvisHeader small{display:none}.jarvisTag{margin-top:18px}.jarvisText{font-size:10px}.menuActions{margin-top:14px}.menuBtn{padding:11px 10px;font-size:8px}}
+@media(max-height:430px){.databaseTop,.databaseBottom{height:24px}.databaseLayout{height:calc(100% - 48px);padding:7px 14px}.dbTab{height:30px}.jarvisTag{margin-top:12px}.jarvisRule{margin:10px 0}.menuActions{padding-top:8px}}
+
 </style>
 </head>
 <body>
 <div id="rotate"><div><div style="font-size:36px;margin-bottom:16px">↻</div>ROTATE YOUR PHONE TO LANDSCAPE<br><small style="display:block;margin-top:12px;color:#7893a8">PROJECT STARK IS BUILT FOR WIDE SCREEN</small></div></div>
 <div id="loading"><div><div class="loaderTitle">PROJECT STARK</div><div class="loaderSub" id="loadtext">INITIALIZING SYSTEMS</div><div class="bar"><i id="loadbar"></i></div><div id="errors"></div></div></div>
-<div id="mainmenu"><div class="menuPanel"><div class="menuKicker">STARK INDUSTRIES PRESENTS</div><div class="menuTitle">PROJECT<br>STARK</div><div class="menuSub">MARK 85 · OPEN WORLD PROTOCOL</div><div class="menuActions"><button class="menuBtn primary" id="startGame">START</button><button class="menuBtn" id="openTutorial">HOW TO PLAY</button></div></div></div><div id="tutorial"><div class="tutorialCard"><b>FLIGHT SYSTEMS</b><br>Left stick — move and steer<br>Swipe — rotate camera<br>FLY — take off · UP / DOWN — altitude<br>BOOST — high speed · FIRE — repulsors<br>LAND — return to the nearest surface<br><button class="menuBtn" id="closeTutorial">GOT IT</button></div></div><div id="ui" class="gameHidden">
+<div id="mainmenu">
+ <div class="databaseTop"><span>STARK INDUSTRIES</span><span>MARK 85 / SYSTEM DATABASE</span><span>LEVEL 01&nbsp;&nbsp; CREDITS 000</span></div>
+ <div class="databaseLayout">
+  <aside class="databaseNav">
+   <div class="navLabel">DATABASE INDEX</div>
+   <button class="dbTab active" data-topic="overview"><span>01</span> ENCRYPTED ARCHIVES <i>▰</i></button>
+   <button class="dbTab" data-topic="city"><span>02</span> CITY & SURROUNDINGS <i>⌄</i></button>
+   <button class="dbTab" data-topic="districts"><span>03</span> DISTRICTS <i>⌄</i></button>
+   <button class="dbTab" data-topic="suit"><span>04</span> SUIT SYSTEMS <i>⌄</i></button>
+   <button class="dbTab" data-topic="flight"><span>05</span> FLIGHT TRAINING <i>⌄</i></button>
+   <button class="dbTab" data-topic="story"><span>06</span> STORY PROTOCOLS <i>⌄</i></button>
+   <div class="navFoot">AUTHORIZED ACCESS ONLY<br>STARK NETWORK / SECURE LINK</div>
+  </aside>
+  <section class="databaseHero">
+   <div class="heroScan">ARMOR STATUS / ONLINE</div>
+   <div class="heroTitle">MARK <b>85</b></div>
+   <div class="heroSub">NANOTECHNOLOGY ARMOR PLATFORM</div>
+   <div class="heroReticle">+</div>
+   <div class="heroBottom"><span>ARC REACTOR</span><b>100%</b><span>POWERED</span></div>
+  </section>
+  <section class="jarvisPanel">
+   <div class="jarvisHeader"><span class="jarvisDot"></span> J.A.R.V.I.S. <small>PERSONAL ASSISTANT / ONLINE</small></div>
+   <div class="jarvisTag" id="jarvisTag">SYSTEM BRIEFING / 001</div>
+   <div class="jarvisTitle" id="jarvisTitle">GOOD EVENING, SIR.</div>
+   <div class="jarvisText" id="jarvisText">All systems are operational. The Mark 85 is ready for deployment. I recommend reviewing the flight controls before entering the city.</div>
+   <div class="jarvisRule"></div>
+   <div class="jarvisHint">J.A.R.V.I.S. RECOMMENDS</div>
+   <div class="jarvisText" id="jarvisHint">Select a database category. I will brief you on the selected system.</div>
+   <div class="menuActions"><button class="menuBtn primary" id="startGame">INITIATE</button><button class="menuBtn" id="openTutorial">FLIGHT BRIEFING</button></div>
+  </section>
+ </div>
+ <div class="databaseBottom"><span>STARK INDUSTRIES / R&D DIVISION</span><span>J.A.R.V.I.S. VOICE INTERFACE ENABLED</span><span>BUILD 01.85</span></div>
+</div>
+<div id="tutorial"><div class="tutorialCard"><div class="jarvisHeader"><span class="jarvisDot"></span> J.A.R.V.I.S. / FLIGHT BRIEFING</div><h2>FLIGHT CONTROL TRAINING</h2><p><b>Movement:</b> Use the left control pad to walk and steer.</p><p><b>Camera:</b> Drag the open screen area to look around.</p><p><b>Takeoff:</b> Select FLY. Use UP and DOWN to control altitude.</p><p><b>Flight:</b> Hold BOOST for acceleration. Use FIRE to discharge both repulsors.</p><p><b>Landing:</b> Select LAND when you are near a safe surface.</p><p class="jarvisQuote">“I will monitor your flight systems, sir. Try to avoid the buildings.”</p><button class="menuBtn primary" id="closeTutorial">ACKNOWLEDGED</button></div></div><div id="ui" class="gameHidden">
  <div class="top"><div><div class="brand">STARK INDUSTRIES</div><div class="sub">MARK 85 // OPEN CITY BUILD // M21</div><div class="sub" id="assetstat"></div></div>
   <div class="readout">MODE <b id="mode">WALK</b><br>ALT <b id="alt">GROUND</b><br>SPD <b id="spd">0</b><br>NRG <b id="nrg">100</b></div></div>
  <div id="toast"></div><div id="mission">PROTOCOL 01 · 0/3</div><div id="minimapWrap"><canvas id="minimap" width="160" height="160"></canvas></div>
@@ -63,5 +115,5 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
  document.addEventListener('touchmove',function(e){e.preventDefault()},{passive:false});
 })();
 </script>
-<script type="module" src="./game.js?v=m37"></script>
+<script type="module" src="./game.js?v=m38"></script>
 </body></html>
