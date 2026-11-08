@@ -66,7 +66,7 @@ class AssetManager {
     let i = 0;
     await Promise.all(names.map(async n => {
       try {
-        const r = await fetch('./' + n + '?v=m8'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
+        const r = await fetch('./' + n + '?v=m10'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
         const z = await JSZip.loadAsync(await r.arrayBuffer());
         for (const f of Object.values(z.files)) if (!f.dir) this.entries.set(lc(base(f.name)), f);
         this._ok(n);
@@ -260,9 +260,19 @@ class CityManager {
         const pz = faceZ ? cz + qz * (SLOT - hz) : cz + qz * SLOT / 2;
         M.compose(V.set(px, 0, pz), Q.setFromAxisAngle(UP, rot), S.set(sx, sy, sz));
         M.multiply(new THREE.Matrix4().makeTranslation(-t.cx, -t.min.y, -t.cz));
-        const height = t.h * sy;
+        let height = t.h * sy;
         const sh = 0.55 + r() * 0.75, wa = 0.85 + r() * 0.3;
-        this.placements.push({ ti, px, pz, hx, hz, height, matrix: M.clone(), tint: 0.55 + r() * 0.3, color: new THREE.Color().setRGB(sh * wa, sh, sh / wa) });
+        // ~half the buildings get a second model stacked on top (footprint matched to the base), so 3 models give many silhouettes.
+        let top = null;
+        if (r() < 0.5) {
+          const ti2 = Math.floor(r() * this.templates.length), t2 = this.templates[ti2];
+          const sy2 = s * (0.5 + r() * 0.8);
+          const M2 = new THREE.Matrix4().compose(V.set(px, height, pz), Q.setFromAxisAngle(UP, rot), S.set(sw / t2.w, sy2, sd / t2.d));
+          M2.multiply(new THREE.Matrix4().makeTranslation(-t2.cx, -t2.min.y, -t2.cz));
+          top = { ti: ti2, matrix: M2 };
+          height += t2.h * sy2;
+        }
+        this.placements.push({ ti, px, pz, hx, hz, height, top, matrix: M.clone(), tint: 0.55 + r() * 0.3, color: new THREE.Color().setRGB(sh * wa, sh, sh / wa) });
         this.colliders.push({ minX: px - hx, maxX: px + hx, minZ: pz - hz, maxZ: pz + hz, h: height });
       }
     }
@@ -289,7 +299,7 @@ class CityManager {
   }
 
   _buildBuildingInstances() {
-    const cap = this.placements.length || 1;
+    const cap = (this.placements.length * 2) || 1;
     this.templates.forEach(t => {
       t.instanced = t.meshes.map(m => {
         const im = new THREE.InstancedMesh(m.geometry, m.material, cap);
@@ -380,6 +390,10 @@ class CityManager {
       if (d < this.near) {
         const t = this.templates[p.ti], k = counts[p.ti]++;
         for (const im of t.instanced) { im.setMatrixAt(k, p.matrix); im.setColorAt(k, p.color); }
+        if (p.top) {
+          const t2 = this.templates[p.top.ti], k2 = counts[p.top.ti]++;
+          for (const im of t2.instanced) { im.setMatrixAt(k2, p.top.matrix); im.setColorAt(k2, p.color); }
+        }
       } else if (d < this.far) {
         M.compose(V.set(p.px, 0, p.pz), Q.identity(), S.set(p.hx * 2, p.height, p.hz * 2));
         this.farMesh.setMatrixAt(far, M); this.farMesh.setColorAt(far, C.setHSL(0.07, 0.25, p.tint * 0.6)); far++;
@@ -390,6 +404,12 @@ class CityManager {
     if (this.farMesh.instanceColor) this.farMesh.instanceColor.needsUpdate = true;
   }
 
+  // Highest walkable surface at (x, z): street/pad, or the roof of a building covering that point.
+  surfaceAt(x, z) {
+    let y = this.groundHeight(x, z);
+    for (const c of this.colliders) if (c.h > y && x >= c.minX && x <= c.maxX && z >= c.minZ && z <= c.maxZ) y = c.h;
+    return y;
+  }
   groundHeight(x, z) {
     const u = x / PITCH + GRID / 2, v = z / PITCH + GRID / 2;
     if (u < 0 || v < 0 || u > GRID || v > GRID) return 0;
@@ -607,6 +627,8 @@ class MovementController {
   }
   takeoff() { if (this.mode === MODE.WALK) { this.mode = MODE.TAKEOFF; this.targetAlt = 14; this.takeoffT = 0; return true; } return false; }
   land() { if (this.mode === MODE.FLY || this.mode === MODE.TAKEOFF) { this.mode = MODE.LANDING; this.targetAlt = 0; return true; } return false; }
+  // M1: the game starts in the air. LAND puts Mark 85 on the nearest surface (street or rooftop).
+  startFlying() { this.mode = MODE.FLY; this.pos.y = 14; this.targetAlt = 14; this.landed = false; }
   get flying() { return this.mode !== MODE.WALK; }
 
   update(dt, inp, camYaw, city) {
@@ -626,7 +648,8 @@ class MovementController {
 
     // Altitude state machine.
     if (this.mode === MODE.FLY) this.targetAlt = THREE.MathUtils.clamp(this.targetAlt + (inp.up - inp.down) * (inp.boost ? 40 : 16) * dt, 2, 420);
-    const ground = city.groundHeight(this.pos.x, this.pos.z);
+    const ground = city.surfaceAt(this.pos.x, this.pos.z);
+    if (this.mode === MODE.LANDING) this.targetAlt = ground; // M2: descend onto whatever is below, roof or street
     const climb = this.mode === MODE.LANDING ? 1.8 : 2.4;
     this.pos.y = THREE.MathUtils.damp(this.pos.y, Math.max(this.targetAlt, ground), climb, dt);
     if (this.mode === MODE.TAKEOFF && (this.takeoffT += dt) > 0.6 && this.pos.y > this.targetAlt - 1.5) this.mode = MODE.FLY;
@@ -676,7 +699,7 @@ class ThirdPersonCamera {
   bump(amount) { this.shake = Math.max(this.shake, amount); }
 
   update(dt, target, { flying, boost, speed }) {
-    const want = (flying ? 13 : 8) * this.userDist * (boost ? 1.25 : 1);
+    const want = ((flying ? 13 + Math.min(6, speed * 0.05) : 8)) * this.userDist * (boost ? 1.25 : 1);
     this.curDist = THREE.MathUtils.damp(this.curDist, want, 3, dt);
     const focus = this._tmp.set(target.x, target.y + (flying ? 1.1 : 1.35), target.z);
     const off = this._dir.set(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch) + (flying ? 0.12 : 0.18), Math.cos(this.yaw) * Math.cos(this.pitch)).normalize();
@@ -777,6 +800,71 @@ class HUD {
 }
 
 
+// ===== gameplay/RingCourse.js =====
+// M3: floating rings above the rooftops. Fly through one to collect it and refill repulsor energy.
+class RingCourse {
+  constructor(scene, city, count = 14) {
+    this.city = city; this.count = count; this.got = 0; this.rings = [];
+    this.geo = new THREE.TorusGeometry(3.2, 0.14, 8, 36);
+    this.mat = new THREE.MeshBasicMaterial({ color: 0x73e7ff, transparent: true, opacity: 0.85 });
+    this.group = new THREE.Group(); scene.add(this.group);
+  }
+  build() {
+    const r = rng(2031);
+    for (let i = 0; i < this.count; i++) {
+      const x = (r() * 2 - 1) * WORLD_LIMIT * 0.85, z = (r() * 2 - 1) * WORLD_LIMIT * 0.85;
+      const y = this.city.surfaceAt(x, z) + 8 + r() * 22;
+      const m = new THREE.Mesh(this.geo, this.mat);
+      m.position.set(x, y, z); m.rotation.set(r() * 0.6 - 0.3, r() * Math.PI * 2, 0);
+      this.group.add(m); this.rings.push({ m, done: false });
+    }
+  }
+  update(dt, pos, rep, hud, flying) {
+    const hx = pos.x, hy = pos.y + 1.1, hz = pos.z;
+    for (const r of this.rings) {
+      if (r.done) continue;
+      r.m.rotation.z += dt * 0.6;
+      if (!flying) continue;
+      const dx = r.m.position.x - hx, dy = r.m.position.y - hy, dz = r.m.position.z - hz;
+      if (dx * dx + dy * dy + dz * dz < 3.2 * 3.2) {
+        r.done = true; r.m.visible = false; this.got++;
+        rep.energy = Math.min(100, rep.energy + 20);
+        hud.toast(this.got === this.count ? 'COURSE CLEAR — ALL RINGS' : `RING ${this.got} / ${this.count}`);
+      }
+    }
+  }
+}
+
+// ===== effects/WindLines.js =====
+// M4: speed streaks that rush past while flying fast. Plain line geometry, no textures.
+class WindLines {
+  constructor(scene, n = 48) {
+    this.n = n; this.off = []; this.buf = new Float32Array(n * 6); this.seeded = false;
+    for (let i = 0; i < n; i++) this.off.push(new THREE.Vector3());
+    this.geo = new THREE.BufferGeometry(); this.geo.setAttribute('position', new THREE.BufferAttribute(this.buf, 3));
+    this.mat = new THREE.LineBasicMaterial({ color: 0xbff5ff, transparent: true, opacity: 0.35, depthWrite: false });
+    this.lines = new THREE.LineSegments(this.geo, this.mat); this.lines.frustumCulled = false; this.lines.visible = false;
+    scene.add(this.lines);
+  }
+  _spawn(v) { const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 9; v.set(Math.cos(a) * r, (Math.random() - 0.3) * 6, Math.sin(a) * r); }
+  update(dt, pos, vel, active) {
+    this.lines.visible = active;
+    if (!active) return;
+    if (!this.seeded) { this.off.forEach(v => this._spawn(v)); this.seeded = true; }
+    const sp = Math.hypot(vel.x, vel.z), len = Math.min(10, 1 + sp * 0.12), dl = sp || 1;
+    for (let i = 0; i < this.n; i++) {
+      const v = this.off[i];
+      v.x -= vel.x * dt; v.z -= vel.z * dt;          // stationary in the world, so the hero rushes past them
+      if (v.length() > 13) this._spawn(v);
+      const sx = pos.x + v.x, sy = pos.y + 1.2 + v.y, sz = pos.z + v.z, k = i * 6;
+      this.buf[k] = sx; this.buf[k + 1] = sy; this.buf[k + 2] = sz;
+      this.buf[k + 3] = sx - (vel.x / dl) * len; this.buf[k + 4] = sy; this.buf[k + 5] = sz - (vel.z / dl) * len;
+    }
+    this.geo.attributes.position.needsUpdate = true;
+  }
+}
+
+
 // ===== main.js =====
 
 const hud = new HUD();
@@ -790,6 +878,8 @@ async function boot() {
   const move = new MovementController();
   const cam = new ThirdPersonCamera(sm.camera, city);
   const rep = new RepulsorSystem(sm.scene);
+  const rings = new RingCourse(sm.scene, city);
+  const wind = new WindLines(sm.scene);
   cam.attach(sm.renderer.domElement);
   sm.scene.add(hero.root);
   perf.onTierChange = t => { sm.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio)); city.setRadii(t.nearRadius, t.farRadius); hud.toast('QUALITY: ' + t.name.toUpperCase()); };
@@ -805,7 +895,10 @@ async function boot() {
   assets.release();
   hud.setLoading(failures.length ? `STARTED WITH ${failures.length} ASSET ERROR(S)` : 'ALL SYSTEMS ONLINE', 100);
   setTimeout(() => hud.hideLoading(), failures.length ? 2500 : 500);
-  hud.toast(heroOk && cityOk ? 'MARK 85 ONLINE' : 'DEGRADED MODE — SEE ERRORS');
+  // M1: start in the air; M3: rings only once the city exists.
+  if (cityOk) rings.build();
+  move.startFlying(); hud.setFlightUI(true);
+  hud.toast(heroOk && cityOk ? `MARK 85 ONLINE · ${rings.count} RINGS` : 'DEGRADED MODE — SEE ERRORS');
 
   hud.on('fly', () => { if (move.takeoff()) { hud.setFlightUI(true); cam.bump(0.05); hud.toast('TAKEOFF — THRUSTERS ENGAGED'); } });
   hud.on('land', () => { if (move.land()) hud.toast('LANDING'); });
@@ -826,6 +919,8 @@ async function boot() {
     move.update(dt, inp, cam.yaw, city);
     if (move.landed) { move.landed = false; hud.setFlightUI(false); hud.toast('LANDED — WALK MODE'); cam.bump(0.06); }
     if (move.hitLimit) hud.toast('EDGE OF THE MAP');
+    rings.update(dt, move.pos, rep, hud, move.flying);
+    wind.update(dt, move.pos, move.vel, move.flying && move.speed > 25);
     hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading;
     hero.tilt.rotation.set(move.pitch, 0, move.bank);
     hero.update(dt, move.flying ? 1 : 0, move.speed);
