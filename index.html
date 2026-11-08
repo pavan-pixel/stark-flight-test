@@ -140,6 +140,22 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 @media(max-height:440px){.missionPicker{margin-top:6px}.missionPicker select{padding:6px}.helmetTop,.helmetBottom{padding:7px 0}}
 
 
+
+/* STARK mobile input surfaces: camera swipes only on the unobstructed world */
+html,body{overscroll-behavior:none}
+canvas{touch-action:none;-webkit-user-select:none;user-select:none}
+#ui{touch-action:pan-x pan-y}
+#joy,.controls,.controls button,#minimapWrap{touch-action:none}
+#joy{z-index:12;pointer-events:auto}
+.controls{z-index:13;pointer-events:auto}
+#minimapWrap{pointer-events:none}
+@media(max-width:700px){
+ .bottom{align-items:flex-end;gap:clamp(12px,4vw,34px)}
+ .joystick{touch-action:none}
+ #ui .controls{grid-template-columns:repeat(3,50px);gap:5px;max-width:160px}
+ #ui .btn{height:40px;min-width:50px;border-radius:11px}
+}
+
 /* Mission deployment and combat HUD */
 .missionPicker{display:flex;align-items:center;gap:10px;margin-top:14px;color:#b56b6d;font:8px ui-monospace,monospace;letter-spacing:.14em;flex-wrap:wrap}
 .missionPicker select{background:#160d16;color:#f0dfe1;border:1px solid #a74b4e;padding:9px 12px;font:9px ui-monospace,monospace;letter-spacing:.08em;min-width:165px}
@@ -256,8 +272,8 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
  addEventListener('error',function(e){fail((e.filename?e.filename.split('/').pop()+':'+e.lineno+' — ':'')+(e.message||'Script failed to load'))});
  addEventListener('unhandledrejection',function(e){fail(e.reason&&e.reason.message||e.reason||'Module rejected')});
  setTimeout(function(){var t=document.getElementById('loadtext');if(t&&t.textContent==='INITIALIZING SYSTEMS')fail('Game module did not start. Check network / CDN access.')},12000);
- document.addEventListener('touchmove',function(e){e.preventDefault()},{passive:false});
+ // Touch gestures are managed by the game canvas and individual controls; avoid a page-wide touch blocker.
 })();
 </script>
-<script type="module" src="./game.js?v=m43"></script>
+<script type="module" src="./game.js?v=m44"></script>
 </body></html>
