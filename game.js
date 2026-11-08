@@ -769,25 +769,39 @@ class NYCWorld {
     return cache.y;
   }
   resolveCircle(pos,r,y){
-    if(!this.ready || !this.meshBounds?.length) return false;
-    let hit=false;
-    for(const b of this.meshBounds){
-      if(y+1.8 < b.min.y || y > b.max.y+0.5 ||
-         pos.x < b.min.x-r || pos.x > b.max.x+r ||
-         pos.z < b.min.z-r || pos.z > b.max.z+r) continue;
-      const nx=Math.max(b.min.x,Math.min(pos.x,b.max.x));
-      const nz=Math.max(b.min.z,Math.min(pos.z,b.max.z));
-      const dx=pos.x-nx,dz=pos.z-nz,d2=dx*dx+dz*dz;
-      if(d2>=r*r) continue;
-      hit=true;
-      if(d2>1e-6){const d=Math.sqrt(d2);pos.x=nx+dx/d*r;pos.z=nz+dz/d*r;}
-      else{
-        const e=[pos.x-b.min.x,b.max.x-pos.x,pos.z-b.min.z,b.max.z-pos.z],m=Math.min(...e);
-        if(m===e[0])pos.x=b.min.x-r;else if(m===e[1])pos.x=b.max.x+r;
-        else if(m===e[2])pos.z=b.min.z-r;else pos.z=b.max.z+r;
+    if(!this.ready || !this.meshRayBounds?.length) return false;
+    // Do not collide against whole-mesh AABBs: a single FBX mesh can cover an
+    // entire block or street and its rectangular bounds trap the player.
+    // Cast short horizontal rays against actual triangles at torso height.
+    let collided=false;
+    const dirs=[[1,0],[-1,0],[0,1],[0,-1],
+      [0.7071,0.7071],[0.7071,-0.7071],[-0.7071,0.7071],[-0.7071,-0.7071]];
+    const margin=0.12, rayY=y+0.95;
+    for(let pass=0;pass<2;pass++){
+      for(const [dx,dz] of dirs){
+        const origin=new THREE.Vector3(pos.x+dx*(r+margin),rayY,pos.z+dz*(r+margin));
+        const direction=new THREE.Vector3(-dx,0,-dz);
+        this.raycaster.set(origin,direction);
+        this.raycaster.near=0.01; this.raycaster.far=r+margin*2;
+        const ray=this.raycaster.ray;
+        const candidates=this.meshRayBounds.filter(v=>v.box.intersectsRay(ray)).map(v=>v.mesh);
+        if(!candidates.length) continue;
+        const hits=this.raycaster.intersectObjects(candidates,false);
+        const wall=hits.find(h=>{
+          if(!h.face) return true;
+          const n=h.face.normal.clone().transformDirection(h.object.matrixWorld);
+          return Math.abs(n.y)<0.68;
+        });
+        if(!wall) continue;
+        const penetration=Math.min(r,Math.max(0,wall.distance-margin));
+        if(penetration>0.015){
+          pos.x-=dx*penetration;
+          pos.z-=dz*penetration;
+          collided=true;
+        }
       }
     }
-    return hit;
+    return collided;
   }
   raycast(origin,dir,maxDist){
     if(!this.ready || !this.meshes?.length) return maxDist;
