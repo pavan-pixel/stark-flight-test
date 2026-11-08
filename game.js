@@ -759,21 +759,29 @@ class IronMan {
   }
 
   _buildGlows() {
-    const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
-    const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(.3, 'rgba(120,230,255,.8)'); g.addColorStop(1, 'rgba(60,180,255,0)');
-    x.fillStyle = g; x.fillRect(0, 0, 64, 64);
-    const tex = new THREE.CanvasTexture(c);
-    for (const id of ['lHand', 'rHand', 'lFoot', 'rFoot']) {
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
-      s.visible = false; s.userData.bone = id; this.root.add(s); this.glows.push(s);
+    const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d');
+    const g=x.createRadialGradient(32,32,0,32,32,32);g.addColorStop(0,'rgba(255,255,255,1)');g.addColorStop(.3,'rgba(120,230,255,.8)');g.addColorStop(1,'rgba(60,180,255,0)');
+    x.fillStyle=g;x.fillRect(0,0,64,64);const tex=new THREE.CanvasTexture(c);
+    const outerGeo=new THREE.CylinderGeometry(.025,.16,1.2,9,1,true);
+    const innerGeo=new THREE.CylinderGeometry(.012,.072,.78,8,1,true);
+    const outerMat=new THREE.MeshBasicMaterial({color:0x28aaff,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
+    const innerMat=new THREE.MeshBasicMaterial({color:0xc9f7ff,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
+    this.thrusters=[];
+    for(const id of ['lHand','rHand','lFoot','rFoot']){
+      const nozzle=new THREE.Group();this.root.add(nozzle);
+      const outer=new THREE.Mesh(outerGeo,outerMat.clone());outer.position.y=-.6;nozzle.add(outer);
+      const inner=new THREE.Mesh(innerGeo,innerMat.clone());inner.position.y=-.39;nozzle.add(inner);
+      const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,color:0x80eaff,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,opacity:0}));
+      glow.scale.set(.5,.5,1);nozzle.add(glow);
+      nozzle.visible=false;this.thrusters.push({id,nozzle,outer,inner,glow});
     }
-    this.chestLight = new THREE.PointLight(0x66e6ff, 0.8, 7); this.root.add(this.chestLight);
-    this.bloom = new THREE.Sprite(new THREE.SpriteMaterial({ map: this._bloomTex(), color: 0x66e6ff, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
-    this.bloom.position.set(0, 1.2, 0.2); this.bloom.scale.set(0.1, 0.1, 1); this.bloom.renderOrder = 9; this.tilt.add(this.bloom);
-    this.aura = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.bloom.material.map, color: 0x9fe8ff, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, transparent: true, opacity: 0 }));
-    this.aura.position.set(0, 1.1, 0); this.aura.scale.set(3.6, 3.6, 1); this.aura.renderOrder = 7; this.root.add(this.aura);
+    this._jetDir=new THREE.Vector3();this._jetUp=new THREE.Vector3(0,1,0);this._jetWorld=new THREE.Vector3();this._jetLocal=new THREE.Vector3();this._jetPos=new THREE.Vector3();
+    this.chestLight=new THREE.PointLight(0x66e6ff,.8,7);this.root.add(this.chestLight);
+    this.bloom=new THREE.Sprite(new THREE.SpriteMaterial({map:this._bloomTex(),color:0x66e6ff,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,opacity:0}));
+    this.bloom.position.set(0,1.2,.2);this.bloom.scale.set(.1,.1,1);this.bloom.renderOrder=9;this.tilt.add(this.bloom);
+    this.aura=new THREE.Sprite(new THREE.SpriteMaterial({map:this.bloom.material.map,color:0x9fe8ff,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false,transparent:true,opacity:0}));
+    this.aura.position.set(0,1.1,0);this.aura.scale.set(3.6,3.6,1);this.aura.renderOrder=7;this.root.add(this.aura);
   }
-
   _buildFallback() {
     this.fallback = true;
     const red = new THREE.MeshStandardMaterial({ color: 0x9d2027, metalness: .8, roughness: .25 }), gold = new THREE.MeshStandardMaterial({ color: 0xc69a4d, metalness: .85, roughness: .22 });
@@ -841,7 +849,7 @@ class IronMan {
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
   }
   // Thruster glow follows the real hand/foot bones; intensity = flight state.
-  update(dt, flightAmount, speed = 0, boost = false, mode = 'WALK', verticalSpeed = 0, hovering = false) {
+  update(dt, flightAmount, speed = 0, boost = false, mode = 'WALK', verticalSpeed = 0, hovering = false, velocity = null) {
     this.flying += (flightAmount - this.flying) * Math.min(1, dt * 6);
     this.firePulse = Math.max(0, (this.firePulse || 0) - dt);
     if (this.mixer) {
@@ -870,18 +878,46 @@ class IronMan {
       this.previousMode = mode;
     }
     if(this.attackState){this.attackTime+=dt;const t=Math.min(1,this.attackTime/this.attackDuration),wave=Math.sin(t*Math.PI);const arm=this.bones[this.attackState==='punch'?'rArm':'lArm'];const leg=this.bones[this.attackState==='kick'?'rLeg':'lLeg'];if(arm&&this.attackBase[this.attackState==='punch'?'rArm':'lArm']){const base=this.attackBase[this.attackState==='punch'?'rArm':'lArm'];arm.rotation.z=base.z+(this.attackState==='punch'?-0.95:0.35)*wave;}if(this.attackState==='kick'&&leg&&this.attackBase.rLeg){leg.rotation.x=this.attackBase.rLeg.x+0.9*wave;}if(t>=1){for(const [id,v] of Object.entries(this.attackBase)){const b=this.bones[id];if(b)b.rotation.set(v.x,v.y,v.z);}this.attackBase={};this.attackState=null;}}
-    const p = new THREE.Vector3();
+    this._lastVelX=0;this._lastVelY=0;this._lastVelZ=0;if(velocity){const inv=this.root.quaternion.clone().invert();this._jetLocal.copy(velocity).applyQuaternion(inv);this._lastVelX=this._jetLocal.x;this._lastVelY=this._jetLocal.y;this._lastVelZ=this._jetLocal.z;}
+    const p=new THREE.Vector3();
     this.root.updateMatrixWorld(true);
-    for (const s of this.glows) {
-      const b = this.bones[s.userData.bone]; s.visible = !!b && (this.flying > 0.05 || (this.firePulse > 0 && s.userData.bone.includes('Hand')));
-      if (!s.visible) continue;
-      b.getWorldPosition(p); this.root.worldToLocal(p); s.position.copy(p);
-      const foot = s.userData.bone.endsWith('Foot'); s.scale.setScalar((foot ? 0.9 : 0.55) * Math.max(this.flying, this.firePulse * 5) * (1 + Math.min(1.2, speed * 0.02) + (boost ? 1.5 : 0)) * (0.9 + Math.random() * 0.2));
+    const flightMode=mode==='TAKEOFF'||mode==='FLIGHT'||mode==='LANDING';
+    const thrustBase=mode==='TAKEOFF'?1.12:mode==='LANDING'?.34:hovering?.38:1;
+    const thrust=THREE.MathUtils.clamp(this.flying*thrustBase*(boost?1.5:1),0,1.6);
+    for(const jet of (this.thrusters||[])){
+      const bone=this.bones[jet.id];
+      if(bone){bone.getWorldPosition(p);this.root.worldToLocal(p);jet.nozzle.position.copy(p);}
+      else {
+        const fallback={lHand:[-.42,1.05,-.03],rHand:[.42,1.05,-.03],lFoot:[-.2,.12,0],rFoot:[.2,.12,0]}[jet.id];
+        jet.nozzle.position.set(...fallback);
+      }
+      const isHand=jet.id.includes('Hand');
+      this._jetWorld.copy(this._jetUp);
+      if(isHand){
+        this._jetWorld.set(0,-.35,.94);
+      } else {
+        this._jetWorld.set(0,-.82,.57);
+      }
+      if(speed>2){
+        const localVelocity=this._jetLocal.set(0,0,0);
+        // Velocity is converted to suit-local space by the root's inverse world rotation.
+        localVelocity.set(this._lastVelX||0,this._lastVelY||0,this._lastVelZ||0);
+        if(localVelocity.lengthSq()>1e-4){localVelocity.normalize();this._jetWorld.lerp(localVelocity.negate(),.62).normalize();}
+      }
+      jet.nozzle.quaternion.setFromUnitVectors(this._jetUp,this._jetWorld.clone().negate());
+      const amount=flightMode?thrust:0;
+      jet.nozzle.visible=amount>.035;
+      const length=(isHand?.42:1.0)*(.55+amount*.7)*(boost?1.25:1);
+      jet.outer.scale.set(1,length,1);jet.inner.scale.set(1,length*.72,1);
+      jet.outer.material.opacity=Math.min(.78,amount*.48);
+      jet.inner.material.opacity=Math.min(1,amount*.72);
+      jet.glow.material.opacity=Math.min(.95,amount*.72);
+      jet.glow.scale.set(isHand?.42:.58,isHand?.42:.58,1);
     }
     if (this.bloom) { const target = boost ? 0.9 : 0, s = 3.5 + (boost ? 3 : 0) + Math.sin(performance.now() * 0.02) * 0.4 * (boost ? 1 : 0);
       this.bloom.material.opacity += (target - this.bloom.material.opacity) * Math.min(1, dt * 8); this.bloom.scale.set(s, s, 1); }
     if (this.aura) { const a = this.flying * (boost ? 0.4 : 0.22); this.aura.material.opacity += (a - this.aura.material.opacity) * Math.min(1, dt * 6); }
-    if (this.chestLight) { this.chestLight.position.set(0, 1.4, -0.25); this.chestLight.intensity = 1.6 + this.flying * 1.6 + (boost ? 4 : 0); }
+    if (this.chestLight) { this.chestLight.position.set(0, 1.4, -0.25); this.chestLight.intensity = 0.7 + this.flying * 1.5 + (boost ? 3.2 : 0); }
   }
 
   worldPosOf(id, out) { const b = this.bones[id]; if (b) { b.getWorldPosition(out); return out; } return out.copy(this.root.position).add(new THREE.Vector3(0, 1.3, 0)); }
@@ -1129,44 +1165,46 @@ function streakTexture() {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 class WindLines {
-  constructor(scene, n = 90) {
-    this.n = n; this.seeded = false;
-    this.off = []; this.w = []; this.l = [];
-    for (let i = 0; i < n; i++) { this.off.push(new THREE.Vector3()); this.w.push(0.12); this.l.push(6); }
-    this.mat = new THREE.MeshBasicMaterial({ map: streakTexture(), color: 0xcfeeff, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
-    this.mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), this.mat, n);
-    this.mesh.frustumCulled = false; this.mesh.visible = false; this.mesh.renderOrder = 8;
-    scene.add(this.mesh);
-    this._m = new THREE.Matrix4(); this._P = new THREE.Vector3(); this._X = new THREE.Vector3(); this._Y = new THREE.Vector3(); this._Z = new THREE.Vector3(); this._C = new THREE.Vector3();
+  constructor(scene, n = 64) {
+    this.n=n; this.seeded=false; this.off=[]; this.w=[]; this.l=[];
+    for(let i=0;i<n;i++){this.off.push(new THREE.Vector3());this.w.push(.12);this.l.push(6);}
+    this.mat=new THREE.MeshBasicMaterial({map:streakTexture(),color:0xcfeeff,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide});
+    this.mesh=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),this.mat,n);
+    this.mesh.frustumCulled=false;this.mesh.visible=false;this.mesh.renderOrder=8;scene.add(this.mesh);
+    this._m=new THREE.Matrix4();this._P=new THREE.Vector3();this._X=new THREE.Vector3();this._Y=new THREE.Vector3();this._Z=new THREE.Vector3();this._C=new THREE.Vector3();
+    this._side=new THREE.Vector3();this._up=new THREE.Vector3();this._worldUp=new THREE.Vector3(0,1,0);
   }
-  _spawn(i, fx, fz) {
-    const ahead = 4 + Math.random() * 36, side = (Math.random() - 0.5) * 40, up = (Math.random() - 0.4) * 24;
-    this.off[i].set(fx * ahead - fz * side, up, fz * ahead + fx * side);
-    this.w[i] = 0.12 + Math.random() * 0.25; this.l[i] = 4 + Math.random() * 10;
+  _spawn(i,dir,side,up){
+    const ahead=5+Math.random()*34, lateral=(Math.random()-.5)*34, vertical=(Math.random()-.5)*22;
+    this.off[i].copy(dir).multiplyScalar(ahead).addScaledVector(side,lateral).addScaledVector(up,vertical);
+    this.w[i]=.055+Math.random()*.12;this.l[i]=4+Math.random()*8;
   }
-  update(dt, pos, vel, active, camPos) {
-    this.mesh.visible = active;
-    if (!active) return;
-    const sp = Math.hypot(vel.x, vel.z), dl = sp || 1, fx = vel.x / dl, fz = vel.z / dl;
-    if (!this.seeded) { for (let i = 0; i < this.n; i++) this._spawn(i, fx, fz); this.seeded = true; }
-    const stretch = 0.5 + Math.min(1, sp / 60);
-    this._Y.set(fx, 0, fz);
-    for (let i = 0; i < this.n; i++) {
-      const v = this.off[i];
-      v.x -= vel.x * dt; v.z -= vel.z * dt;                 // stationary in the world: the hero rushes past them
-      if (v.length() > 45) this._spawn(i, fx, fz);
-      this._P.set(pos.x + v.x, pos.y + 1.2 + v.y, pos.z + v.z);
+  update(dt,pos,vel,active,camPos){
+    const sp=vel.length(), intensity=THREE.MathUtils.clamp((sp-6)/58,0,1);
+    this.mesh.visible=!!active&&sp>7;
+    this.mat.opacity=THREE.MathUtils.damp(this.mat.opacity,this.mesh.visible?.08+intensity*.42:0,8,dt);
+    if(!this.mesh.visible)return;
+    this._Y.copy(vel).normalize();
+    this._side.crossVectors(this._Y,this._worldUp);
+    if(this._side.lengthSq()<1e-5)this._side.set(1,0,0);else this._side.normalize();
+    this._up.crossVectors(this._side,this._Y).normalize();
+    if(!this.seeded){for(let i=0;i<this.n;i++)this._spawn(i,this._Y,this._side,this._up);this.seeded=true;}
+    const stretch=.45+intensity*1.35;
+    for(let i=0;i<this.n;i++){
+      const v=this.off[i];v.addScaledVector(vel,-dt);
+      if(v.dot(this._Y)<-10||v.length()>58)this._spawn(i,this._Y,this._side,this._up);
+      this._P.set(pos.x+v.x,pos.y+v.y,pos.z+v.z);
       this._C.copy(camPos).sub(this._P).normalize();
-      this._X.crossVectors(this._Y, this._C); if (this._X.lengthSq() < 1e-6) this._X.set(1, 0, 0); this._X.normalize();
-      this._Z.crossVectors(this._X, this._Y).normalize();   // faces the camera
-      const xs = this._X.clone().multiplyScalar(this.w[i]), ys = this._Y.clone().multiplyScalar(this.l[i] * stretch);
-      this._m.makeBasis(xs, ys, this._Z); this._m.setPosition(this._P);
-      this.mesh.setMatrixAt(i, this._m);
+      this._X.crossVectors(this._Y,this._C);
+      if(this._X.lengthSq()<1e-6)this._X.copy(this._side);
+      this._X.normalize();this._Z.crossVectors(this._X,this._Y).normalize();
+      const xs=this._X.clone().multiplyScalar(this.w[i]);
+      const ys=this._Y.clone().multiplyScalar(this.l[i]*stretch);
+      this._m.makeBasis(xs,ys,this._Z);this._m.setPosition(this._P);this.mesh.setMatrixAt(i,this._m);
     }
-    this.mesh.instanceMatrix.needsUpdate = true;
+    this.mesh.instanceMatrix.needsUpdate=true;
   }
 }
-
 
 // ===== city/TrafficSystem.js =====
 // Lightweight instanced traffic on the grid streets. No per-car draw calls.
@@ -1441,10 +1479,10 @@ async function boot() {
     if (move.hitLimit) hud.toast('EDGE OF THE MAP');
     if (inp.boost && !cine.boostWasOn) cine.trigger('BOOST',1.25); cine.boostWasOn=inp.boost;
     rings.update(dt, move.pos, rep, hud, move.flying);
-    wind.update(dt, move.pos, move.vel, move.flying && move.speed > 20, sm.camera.position);
+    wind.update(dt, move.pos, move.vel, move.flying && move.speed > 7, sm.camera.position);
     hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading;
     hero.tilt.rotation.set(move.pitch, 0, move.bank);
-    hero.update(dt, move.flying ? 1 : 0, move.speed, inp.boost, move.mode, move.vel.y, inp.hover);
+    hero.update(dt, move.flying ? 1 : 0, move.speed, inp.boost, move.mode, move.vel.y, inp.hover, move.vel);
     city.update(move.pos);
     if(missionEnv.active==='city')traffic.update(dt, move.pos);
     rep.update(dt, inp.boost, mission, hud); mission.update(dt, move.pos, hud); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
