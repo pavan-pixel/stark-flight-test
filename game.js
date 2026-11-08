@@ -75,13 +75,31 @@ class AssetManager {
       try {
         const r = await fetch('./' + n + '?v=m21'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
         const z = await JSZip.loadAsync(await r.arrayBuffer());
-        // ZIPs mount concurrently. Resolve duplicate basenames by the explicit
-        // archive order, not network completion order; later archives have priority.
-        for (const f of Object.values(z.files)) if (!f.dir) {
-          const k=lc(base(f.name)), previous=this.entryPriority.get(k);
-          if(previous===undefined || priority>=previous) {
-            this.entries.set(k,f);
-            this.entryPriority.set(k,priority);
+        // Some environment packs wrap the actual FBX archive one level deep
+        // (for example source/NewYork.zip) and keep optimized textures beside it.
+        // Mount nested entries first, then direct entries so optimized outer
+        // textures win duplicate-basename collisions.
+        const files=Object.values(z.files).filter(f=>!f.dir);
+        const nested=files.filter(f=>/\\.zip$/i.test(f.name));
+        await Promise.all(nested.map(async nf=>{
+          try {
+            const inner=await JSZip.loadAsync(await nf.async('arraybuffer'));
+            for(const entry of Object.values(inner.files)) if(!entry.dir && !/\\.zip$/i.test(entry.name)) {
+              const k=lc(base(entry.name)), rank=priority*100+1, previous=this.entryPriority.get(k);
+              if(previous===undefined || rank>=previous) {
+                this.entries.set(k,entry);
+                this.entryPriority.set(k,rank);
+              }
+            }
+          } catch(err) { this.onError(nf.name+': nested ZIP could not be mounted · '+(err?.message||err)); }
+        }));
+        // ZIPs mount concurrently. Rank encodes archive order plus nesting:
+        // later archives always win; direct outer assets win within one archive.
+        for (const entry of files) if (!/\\.zip$/i.test(entry.name)) {
+          const k=lc(base(entry.name)), rank=priority*100+2, previous=this.entryPriority.get(k);
+          if(previous===undefined || rank>=previous) {
+            this.entries.set(k,entry);
+            this.entryPriority.set(k,rank);
           }
         }
         this._ok(n);
@@ -646,14 +664,10 @@ class NYCWorld {
     const source=await a.loadFBX('NewYork.fbx');
     source.updateMatrixWorld(true);
     const sourceBounds=new THREE.Box3().setFromObject(source);
-    const raw=sourceBounds.getSize(new THREE.Vector3());
-    const dims={x:raw.x,y:raw.y,z:raw.z};
-    const axes=['x','y','z'].sort((a,b)=>dims[a]-dims[b]);
-    const smallest=axes[0], largest=Math.max(raw.x,raw.y,raw.z);
-    let upAxis='y';
-    // Only override the conventional Y-up orientation when the bounds give
-    // a useful signal. Near-cubic assets remain Y-up rather than being guessed.
-    if(largest>0 && dims[smallest]/largest<0.82) upAxis=smallest;
+    // This source FBX declares UpAxis=Y (GlobalSettings / UpAxis=1).
+    // FBXLoader has already interpreted the file's object transforms; do not
+    // guess an axis from near-cubic city bounds or rotate the imported scene again.
+    const upAxis='y';
 
     const root=new THREE.Group();
     root.add(source);
