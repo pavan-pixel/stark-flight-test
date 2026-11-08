@@ -997,6 +997,58 @@ class WindLines {
 }
 
 
+// ===== city/TrafficSystem.js =====
+// Lightweight instanced traffic on the grid streets. No per-car draw calls.
+class TrafficSystem {
+  constructor(scene, perf) {
+    this.count = perf.isMobile ? 14 : 24;
+    this.items = [];
+    const bodyGeo = new THREE.BoxGeometry(4.2, 1.05, 1.9);
+    bodyGeo.translate(0, 0.78, 0);
+    const cabinGeo = new THREE.BoxGeometry(2.15, 0.82, 1.62);
+    cabinGeo.translate(-0.12, 1.62, 0);
+    const glassGeo = new THREE.BoxGeometry(1.72, 0.54, 1.66);
+    glassGeo.translate(-0.12, 1.66, 0);
+    this.body = new THREE.InstancedMesh(bodyGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.38, metalness: 0.42 }), this.count);
+    this.cabin = new THREE.InstancedMesh(cabinGeo, new THREE.MeshStandardMaterial({ color: 0x252d38, roughness: 0.5, metalness: 0.35 }), this.count);
+    this.glass = new THREE.InstancedMesh(glassGeo, new THREE.MeshStandardMaterial({ color: 0x7ca8bb, roughness: 0.18, metalness: 0.55, transparent: true, opacity: 0.82 }), this.count);
+    this.body.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.cabin.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.glass.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.items = Array.from({ length: this.count }, (_, i) => ({
+      axis: i % 2, road: (i * 3) % 11, lane: i % 4 < 2 ? -4.3 : 4.3,
+      dir: i % 4 < 2 ? 1 : -1, offset: ((i * 67) % 1200) - 600,
+      speed: 9 + (i * 7 % 10), phase: i * 0.37
+    }));
+    const dummy = new THREE.Object3D(), color = new THREE.Color();
+    for (let i = 0; i < this.count; i++) {
+      color.setHSL((i * 0.173) % 1, 0.42, 0.42);
+      this.body.setColorAt(i, color);
+    }
+    this.body.instanceColor.needsUpdate = true;
+    scene.add(this.body, this.cabin, this.glass);
+    this.dummy = dummy;
+  }
+  update(dt, focus) {
+    const d = this.dummy;
+    for (let i = 0; i < this.count; i++) {
+      const v = this.items[i];
+      v.offset += v.dir * v.speed * dt;
+      if (v.offset > 680) v.offset = -680;
+      if (v.offset < -680) v.offset = 680;
+      const boundary = (v.road - 5) * 110 + 55;
+      const x = v.axis === 0 ? v.offset : boundary + v.lane;
+      const z = v.axis === 0 ? boundary + v.lane : v.offset;
+      const yaw = v.axis === 0 ? (v.dir > 0 ? 0 : Math.PI) : (v.dir > 0 ? -Math.PI / 2 : Math.PI / 2);
+      const distance = Math.hypot(x - focus.x, z - focus.z);
+      const visible = distance < 520;
+      d.position.set(x, 0, z); d.rotation.set(0, yaw, 0); d.scale.setScalar(visible ? 1 : 0.0001); d.updateMatrix();
+      this.body.setMatrixAt(i, d.matrix); this.cabin.setMatrixAt(i, d.matrix); this.glass.setMatrixAt(i, d.matrix);
+    }
+    this.body.instanceMatrix.needsUpdate = this.cabin.instanceMatrix.needsUpdate = this.glass.instanceMatrix.needsUpdate = true;
+  }
+}
+
 // ===== main.js =====
 
 const hud = new HUD();
@@ -1011,7 +1063,7 @@ async function boot() {
   const cam = new ThirdPersonCamera(sm.camera, city);
   const rep = new RepulsorSystem(sm.scene);
   const rings = new RingCourse(sm.scene, city);
-  const wind = new WindLines(sm.scene);
+  const wind = new WindLines(sm.scene);\n  const traffic = new TrafficSystem(sm.scene, perf);
   cam.attach(sm.renderer.domElement);
   sm.scene.add(hero.root);
   perf.onTierChange = t => { sm.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio)); city.setRadii(t.nearRadius, t.farRadius); hud.toast('QUALITY: ' + t.name.toUpperCase()); };
@@ -1057,7 +1109,7 @@ async function boot() {
     hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading;
     hero.tilt.rotation.set(move.pitch, 0, move.bank);
     hero.update(dt, move.flying ? 1 : 0, move.speed, inp.boost);
-    city.update(move.pos);
+    city.update(move.pos);\n    traffic.update(dt, move.pos);
     rep.update(dt, inp.boost); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
     cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed });
     hud.readout(move.mode, move.pos.y, move.speed * 3.6, rep.energy);
