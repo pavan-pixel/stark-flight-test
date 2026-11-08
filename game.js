@@ -642,11 +642,16 @@ function retargetClip(clip, boneKeys) {
   const tracks = [];
   for (const t of clip.tracks) {
     const i = t.name.lastIndexOf('.'); if (i < 0) continue;
-    const ue = t.name.slice(0, i).split(/[|:]/).pop(), prop = t.name.slice(i);
-    if (ue === 'pelvis') continue; // root/hips rotation in the clip lays the hero flat; the tilt group owns posture
-    const mix = UE_TO_MIXAMO[ue], target = mix && boneKeys.get(mix.toLowerCase());
+    const source = t.name.slice(0, i).split(/[|:]/).pop().replace(/^mixamorig:?/i, '');
+    const prop = t.name.slice(i), keyName = source.toLowerCase();
+    const direct = boneKeys.get(keyName);
+    const mappedName = UE_TO_MIXAMO[keyName];
+    const target = direct || (mappedName && boneKeys.get(mappedName.toLowerCase()));
     if (!target) continue;
-    t.name = target + prop; tracks.push(t);
+    // Preserve hips rotation but ignore root translation: world movement belongs to the controller.
+    if ((keyName === 'hips' || keyName === 'pelvis') && prop === '.position') continue;
+    t.name = target + prop;
+    tracks.push(t);
   }
   return new THREE.AnimationClip(clip.name, clip.duration, tracks);
 }
@@ -738,26 +743,50 @@ class IronMan {
     this.mixer = new THREE.AnimationMixer(obj); this.actions = {}; this.current = null;
     const boneKeys = new Map();
     obj.traverse(o => { if (o.isBone) boneKeys.set(o.name.replace(/^mixamorig:?/, '').toLowerCase(), o.name); });
-    const files = { idle: 'Idle_relaxed.fbx', walk: 'Walk_forwards.fbx', run: 'Run_sprint.fbx', fly: 'Jump_in_the_air.fbx' };
-    await Promise.all(Object.entries(files).map(async ([k, f]) => {
-      try {
-        const o = await this.assets.loadFBX(f);
-        const raw = o.animations && o.animations[0];
-        const clip = raw && retargetClip(raw, boneKeys);
-        if (clip && clip.tracks.length) { const a = this.mixer.clipAction(clip); a.setLoop(THREE.LoopRepeat); a.play(); a.setEffectiveWeight(0); this.actions[k] = a; }
-      } catch (e) { this.assets.onError('ANIM ' + f + ': ' + (e.message || e)); }
+    const files = {
+      idle: ['Idle.fbx', 'Idle_relaxed.fbx'],
+      idleTransition: ['Action Idle To Standing Idle.fbx'],
+      walk: ['Walking.fbx', 'Walk_forwards.fbx'],
+      run: ['Running.fbx', 'Run_sprint.fbx'],
+      takeoff: ['Jumping.fbx'],
+      fly: ['Flying.fbx', 'Jump_in_the_air.fbx'],
+      hover: ['Floating.fbx'],
+      fall: ['Falling Idle.fbx'],
+      land: ['Falling To Landing.fbx'],
+    };
+    await Promise.all(Object.entries(files).map(async ([keyName, candidates]) => {
+      for (const fileName of candidates) {
+        try {
+          const o = await this.assets.loadFBX(fileName);
+          const raw = o.animations && o.animations[0];
+          const clip = raw && retargetClip(raw, boneKeys);
+          if (clip && clip.tracks.length >= 2) {
+            const action = this.mixer.clipAction(clip);
+            action.setLoop(THREE.LoopRepeat);
+            action.play(); action.setEffectiveWeight(0);
+            this.actions[keyName] = action;
+            return;
+          }
+          this.assets.onError('ANIM ' + fileName + ': no compatible bone tracks');
+        } catch (e) { /* try legacy filename where available */ }
+      }
+      if (!this.actions[keyName]) this.assets.onError('ANIM ' + keyName + ': no compatible FBX clip found');
     }));
-    const n = Object.keys(this.actions).length;
-    this.assets.onStatus(n, 0);
-    if (n < 4) this.assets.onError('ANIM: only ' + n + '/4 clips loaded');
+    const loaded = Object.keys(this.actions).length;
+    this.assets.onStatus(loaded, 0);
+    if (!this.actions.idle) this.assets.onError('ANIM: idle clip unavailable; suit will use bind pose');
     this.play('idle');
   }
-  play(name) {
+  play(name, oneShot = false) {
     const next = this.actions && this.actions[name];
     if (!next || next === this.current) return;
-    next.reset().setEffectiveWeight(1).fadeIn(0.25);
-    if (this.current) this.current.fadeOut(0.25);
+    next.reset(); next.enabled = true;
+    next.setLoop(oneShot ? THREE.LoopOnce : THREE.LoopRepeat, oneShot ? 1 : Infinity);
+    next.clampWhenFinished = oneShot;
+    next.setEffectiveWeight(1).fadeIn(0.22);
+    if (this.current) this.current.fadeOut(0.22);
     this.current = next;
+    this.currentName = name;
   }
 
   _bloomTex() {
@@ -768,11 +797,32 @@ class IronMan {
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
   }
   // Thruster glow follows the real hand/foot bones; intensity = flight state.
-  update(dt, flightAmount, speed = 0, boost = false) {
+  update(dt, flightAmount, speed = 0, boost = false, mode = 'WALK', verticalSpeed = 0, hovering = false) {
     this.flying += (flightAmount - this.flying) * Math.min(1, dt * 6);
     if (this.mixer) {
       this.mixer.update(dt);
-      this.play(this.flying > 0.5 ? 'fly' : speed > 7 ? 'run' : speed > 0.6 ? 'walk' : 'idle');
+      let desired = 'idle', oneShot = false;
+      if (mode === 'TAKEOFF') {
+        this.takeoffAnimTime = (this.takeoffAnimTime || 0) + dt;
+        desired = this.takeoffAnimTime < 0.72 ? 'takeoff' : 'fly';
+      } else if (mode === 'LANDING') {
+        desired = 'land'; oneShot = true;
+      } else if (mode === 'FLIGHT') {
+        desired = verticalSpeed < -3 ? 'fall' : (hovering || speed < 1.5 ? 'hover' : 'fly');
+      } else {
+        if (this.previousMode === 'LANDING') { desired = 'idleTransition'; oneShot = true; }
+        else if (speed > 7) desired = 'run';
+        else if (speed > 0.6) desired = 'walk';
+        this.takeoffAnimTime = 0;
+      }
+      if (!this.actions[desired]) {
+        desired = mode === 'FLIGHT' ? (verticalSpeed < -3 ? 'fly' : 'hover') :
+          (mode === 'TAKEOFF' ? 'fly' : mode === 'LANDING' ? 'idle' :
+            (speed > 7 ? 'run' : speed > 0.6 ? 'walk' : 'idle'));
+        oneShot = false;
+      }
+      this.play(desired, oneShot);
+      this.previousMode = mode;
     }
     const p = new THREE.Vector3();
     this.root.updateMatrixWorld(true);
@@ -1158,7 +1208,7 @@ async function boot() {
   perf.onTierChange = t => { sm.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio)); city.setRadii(t.nearRadius, t.farRadius); hud.toast('QUALITY: ' + t.name.toUpperCase()); };
 
   hud.setLoading('READING ASSET ARCHIVES', 2);
-  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip', 'kenney_city-kit-commercial_2_1.zip', 'stark-environment-pack.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
+  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip', 'stark-next-animations.zip', 'stark-next-city.zip', 'stark-next-apartments.zip', 'kenney_city-kit-commercial_2_1.zip', 'stark-environment-pack.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
   // Hero first (playable immediately), city second; either failure is reported and never blocks the loop.
   let heroOk = true, cityOk = true;
   await Promise.all([
@@ -1200,7 +1250,7 @@ async function boot() {
     wind.update(dt, move.pos, move.vel, move.flying && move.speed > 20, sm.camera.position);
     hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading;
     hero.tilt.rotation.set(move.pitch, 0, move.bank);
-    hero.update(dt, move.flying ? 1 : 0, move.speed, inp.boost);
+    hero.update(dt, move.flying ? 1 : 0, move.speed, inp.boost, move.mode, move.vel.y, inp.hover);
     city.update(move.pos);
     traffic.update(dt, move.pos);
     rep.update(dt, inp.boost); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
