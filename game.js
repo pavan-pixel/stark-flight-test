@@ -994,9 +994,9 @@ class ThirdPersonCamera {
   }
   attach(el) {
     el.style.touchAction = 'none';
-    el.style.touchAction='none'; el.addEventListener('pointerdown', e => { if(e.target.closest('#joy,.controls,button,input,select,#minimapWrap'))return; this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); try{el.setPointerCapture(e.pointerId);}catch(_){} if (this.pointers.size === 2) this.pinch = this._span(); });
+    el.style.touchAction='none'; el.addEventListener('pointerdown', e => { if(e.target.closest('#joy,.controls,button,input,select,#minimapWrap'))return; e.preventDefault(); this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); try{el.setPointerCapture(e.pointerId);}catch(_){} if (this.pointers.size === 2) this.pinch = this._span(); });
     el.addEventListener('pointermove', e => {
-      const p = this.pointers.get(e.pointerId); if (!p) return;
+      const p = this.pointers.get(e.pointerId); if (!p) return; e.preventDefault();
       const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
       if (this.pointers.size >= 2) { const s = this._span(); this.userDist = clamp(this.userDist * (this.pinch / Math.max(s, 1)), 0.6, 2.2); this.pinch = s; }
       else { this.yaw -= dx * 0.0030; this.pitch = clamp(this.pitch + dy * 0.0022, -0.30, 0.72); }
@@ -1099,8 +1099,8 @@ class HUD {
   }
   _hold(id, key, val = 1) {
     const b = $(id), set = v => { this.input[key] = v ? val : (typeof val === 'number' ? 0 : false); b.classList.toggle('on', !!v); };
-    b.addEventListener('pointerdown', e => { b.setPointerCapture(e.pointerId); set(true); });
-    for (const ev of ['pointerup', 'pointercancel']) b.addEventListener(ev, () => set(false));
+    b.style.touchAction='none'; b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); try{b.setPointerCapture(e.pointerId);}catch(_){} set(true); });
+    for (const ev of ['pointerup', 'pointercancel','lostpointercapture']) b.addEventListener(ev, () => set(false));
   }
   _buttons() {
     $('run').addEventListener('click', () => { this.input.run = !this.input.run; $('run').classList.toggle('on', this.input.run); this.toast(this.input.run ? 'RUN MODE' : 'WALK MODE'); });
