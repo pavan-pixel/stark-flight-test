@@ -215,7 +215,7 @@ class SceneManager {
       side: THREE.BackSide, depthWrite: false, fog: false,
       uniforms: { sunDir: { value: SUN_DIR } },
       vertexShader: 'varying vec3 vD;void main(){vD=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-      fragmentShader: 'varying vec3 vD;uniform vec3 sunDir;void main(){vec3 d=normalize(vD);float h=clamp(d.y,0.,1.);vec3 hor=vec3(.80,.85,.88),mid=vec3(.46,.62,.84),top=vec3(.16,.38,.72);vec3 c=mix(hor,mid,smoothstep(0.,.25,h));c=mix(c,top,smoothstep(.25,.9,h));float s=max(dot(d,sunDir),0.);c+=vec3(1.,.9,.7)*(pow(s,8.)*.25+pow(s,64.)*.6+pow(s,800.)*4.);gl_FragColor=vec4(c,1.);}',
+      fragmentShader: 'varying vec3 vD;uniform vec3 sunDir;void main(){vec3 d=normalize(vD);float h=clamp(d.y,0.,1.);vec3 hor=vec3(.80,.85,.88),mid=vec3(.46,.62,.84),top=vec3(.16,.38,.72);vec3 c=mix(hor,mid,smoothstep(0.,.25,h));c=mix(c,top,smoothstep(.25,.9,h));float s=max(dot(d,sunDir),0.);c+=vec3(1.,.9,.7)*(pow(s,8.)*.12+pow(s,64.)*.22+pow(s,800.)*1.15);gl_FragColor=vec4(c,1.);}',
     }));
     this.sky.renderOrder = -1;
     this.scene.add(this.sky);
@@ -223,7 +223,7 @@ class SceneManager {
   // Soft radial glow used for the sun flare and the boost bloom.
     this.glowTex = glowTexture();
     this.sunFlare = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xfff1d0, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, fog: false, transparent: true }));
-    this.sunFlare.scale.set(1100, 1100, 1); this.sunFlare.renderOrder = 10;
+    this.sunFlare.scale.set(110, 110, 1); this.sunFlare.material.opacity = 0.07; this.sunFlare.renderOrder = 10; this.sunFlare.visible = !perf.isMobile;
     this.scene.add(this.sunFlare);
 
     // Realtime sun shadows on the high tier only (follows the hero, so the 280 m box stays sharp).
@@ -240,7 +240,7 @@ class SceneManager {
     if (this.post) {
       this.composer = new EffectComposer(this.renderer);
       this.composer.addPass(new RenderPass(this.scene, this.camera));
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.75, 0.7, 0.7);
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.28, 0.35, 0.88);
       this.composer.addPass(this.bloom);
       this.grade = new ShaderPass(GradeShader); this.composer.addPass(this.grade);
       this.blur = new ShaderPass(MotionBlurShader); this.composer.addPass(this.blur);
@@ -250,11 +250,11 @@ class SceneManager {
     // Lens flare is enabled on mobile too; previously it was hidden inside
     // the desktop post-processing branch, so iPhones never rendered it.
     this.lensflare = new Lensflare();
-    this.lensflare.addElement(new LensflareElement(flareTexture(0), 850, 0, new THREE.Color(1, 0.9, 0.72)));
-    this.lensflare.addElement(new LensflareElement(flareTexture(1), 220, 0.32, new THREE.Color(1, 0.78, 0.48)));
-    this.lensflare.addElement(new LensflareElement(flareTexture(1), 420, 0.62, new THREE.Color(0.62, 0.8, 1)));
-    this.lensflare.addElement(new LensflareElement(flareTexture(0), 120, 0.92, new THREE.Color(1, 0.68, 0.38)));
-    this.scene.add(this.lensflare);
+    this.lensflare.addElement(new LensflareElement(flareTexture(0), 48, 0, new THREE.Color(1, 0.88, 0.7)));
+    this.lensflare.addElement(new LensflareElement(flareTexture(1), 34, 0.32, new THREE.Color(1, 0.78, 0.48)));
+    this.lensflare.addElement(new LensflareElement(flareTexture(1), 58, 0.62, new THREE.Color(0.62, 0.8, 1)));
+    this.lensflare.addElement(new LensflareElement(flareTexture(0), 22, 0.92, new THREE.Color(1, 0.68, 0.38)));
+    this.lensflare.visible = !perf.isMobile; this.scene.add(this.lensflare);
     addEventListener('resize', () => this.resize());
     perf.onTierChange = t => this.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio));
   }
@@ -327,12 +327,14 @@ class CityManager {
     progress('LOADING BUILDING MODELS', 10);
     const names = buildingNames(a);
     if (!names.length) throw new Error('No building_*.gltf models found in any ZIP');
-    const suburbanNames = Array.from({ length: 21 }, (_, i) => `suburban-building-type-${String.fromCharCode(97 + i)}.glb`);
+    // Only request optional suburban assets that actually exist in the mounted archives.
+    // Missing optional files should never delay the core city build.
+    const suburbanNames = Array.from({ length: 8 }, (_, i) => `suburban-building-type-${String.fromCharCode(97 + i)}.glb`).filter(n => a.has(n));
     const [gb, suburban, treeLarge, treeSmall, decalCross, decalYellow] = await Promise.all([
       Promise.all(names.map(n => a.loadGLTF(n).catch(() => null))),
       Promise.all(suburbanNames.map(n => a.loadGLTF(n).catch(() => null))),
-      a.loadGLTF('suburban-tree-large.glb').catch(() => null),
-      a.loadGLTF('suburban-tree-small.glb').catch(() => null),
+      a.has('suburban-tree-large.glb') ? a.loadGLTF('suburban-tree-large.glb').catch(() => null) : Promise.resolve(null),
+      a.has('suburban-tree-small.glb') ? a.loadGLTF('suburban-tree-small.glb').catch(() => null) : Promise.resolve(null),
       a.loadGLTF(base + 'Decal_Crosswalk.gltf'), a.loadGLTF(base + 'Decal_DoubleYellow_Straight.gltf'),
     ]);
     progress('PROCESSING CITY GEOMETRY', 55);
@@ -363,7 +365,14 @@ class CityManager {
 
   _template(root) {
     root.updateMatrixWorld(true);
-    const meshes = []; root.traverse(o => { if (o.isMesh) meshes.push(o); });
+    const meshes = [];
+    // Bake each GLTF child transform into its geometry before instancing.
+    root.traverse(o => {
+      if (!o.isMesh) return;
+      const geometry = o.geometry.clone();
+      geometry.applyMatrix4(o.matrixWorld);
+      meshes.push({ geometry, material: o.material });
+    });
     if (!meshes.length) throw new Error('Building model has no meshes');
     const box = new THREE.Box3().setFromObject(root);
     const t = { meshes, min: box.min.clone(), max: box.max.clone() };
@@ -399,16 +408,8 @@ class CityManager {
         M.multiply(new THREE.Matrix4().makeTranslation(-t.cx, -t.min.y, -t.cz));
         let height = t.h * sy;
         const sh = 0.55 + r() * 0.75, wa = 0.85 + r() * 0.3;
-        // ~half the buildings get a second model stacked on top (footprint matched to the base), so 3 models give many silhouettes.
-        let top = null;
-        if (r() < 0.5) {
-          const ti2 = Math.floor(r() * this.templates.length), t2 = this.templates[ti2];
-          const sy2 = s * (0.5 + r() * 0.8);
-          const M2 = new THREE.Matrix4().compose(V.set(px, height, pz), Q.setFromAxisAngle(UP, rot), S.set(sw / t2.w, sy2, sd / t2.d));
-          M2.multiply(new THREE.Matrix4().makeTranslation(-t2.cx, -t2.min.y, -t2.cz));
-          top = { ti: ti2, matrix: M2 };
-          height += t2.h * sy2;
-        }
+        // Keep one complete building per plot; stacking unrelated GLTFs caused floating roofs and overlap blocks.
+        const top = null;
         this.placements.push({ ti, px, pz, hx, hz, height, top, matrix: M.clone(), tint: 0.55 + r() * 0.3, color: new THREE.Color().setRGB(sh * wa, sh, sh / wa) });
         this.colliders.push({ minX: px - hx, maxX: px + hx, minZ: pz - hz, maxZ: pz + hz, h: height });
       }
