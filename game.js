@@ -756,35 +756,43 @@ class NYCWorld {
   // Query the authored NYC FBX instead of the hidden procedural city's grid.
   surfaceAt(x,z,currentY=0){
     if(!this.ready || !this.meshes?.length) return this.groundY;
-    // Always cast from above the complete authored world. Starting at playerY+8
-    // misses streets when the player has spawned beneath a misaligned FBX.
     const cache=this.surfaceCache;
-    if(Math.hypot(x-cache.x,z-cache.z)<0.45) return cache.y;
-    const startY=Math.max(this.bounds.max.y+20,currentY+80,100);
+    if(Math.hypot(x-cache.x,z-cache.z)<0.25 && Math.abs(currentY-cache.y)<2.5) return cache.y;
+    // Sample just above the player's feet, not from the top of the entire city.
+    // This selects the nearest walkable surface below the player (street/roof),
+    // instead of snapping to an unrelated rooftop or overhead mesh.
+    const startY=currentY+1.6;
     this.raycaster.set(new THREE.Vector3(x,startY,z),this.rayDown);
-    this.raycaster.near=0; this.raycaster.far=Math.max(20,startY-this.bounds.min.y+5);
-    const candidates=this.meshRayBounds.filter(v=>x>=v.box.min.x-0.1&&x<=v.box.max.x+0.1&&z>=v.box.min.z-0.1&&z<=v.box.max.z+0.1&&v.box.min.y<=startY&&v.box.max.y>=this.bounds.min.y);
+    this.raycaster.near=0; this.raycaster.far=Math.max(12,startY-this.bounds.min.y+4);
+    const candidates=this.meshRayBounds.filter(v=>x>=v.box.min.x-0.1&&x<=v.box.max.x+0.1&&z>=v.box.min.z-0.1&&z<=v.box.max.z+0.1&&v.box.min.y<=startY&&v.box.max.y<=startY+0.05);
     const hits=this.raycaster.intersectObjects(candidates.map(v=>v.mesh),false);
     cache.x=x; cache.z=z; cache.y=hits.length?hits[0].point.y:this.groundY;
     return cache.y;
   }
   resolveCircle(pos,r,y){
-    if(!this.ready || !this.meshBounds?.length) return false;
+    if(!this.ready || !this.meshRayBounds?.length) return false;
+    // Ray-test the real triangles around the character. A mesh's AABB can cover
+    // empty street space, so pushing the player out of those boxes traps them.
     let hit=false;
-    for(const b of this.meshBounds){
-      if(y+1.8 < b.min.y || y > b.max.y+0.5 ||
-         pos.x < b.min.x-r || pos.x > b.max.x+r ||
-         pos.z < b.min.z-r || pos.z > b.max.z+r) continue;
-      const nx=Math.max(b.min.x,Math.min(pos.x,b.max.x));
-      const nz=Math.max(b.min.z,Math.min(pos.z,b.max.z));
-      const dx=pos.x-nx,dz=pos.z-nz,d2=dx*dx+dz*dz;
-      if(d2>=r*r) continue;
-      hit=true;
-      if(d2>1e-6){const d=Math.sqrt(d2);pos.x=nx+dx/d*r;pos.z=nz+dz/d*r;}
-      else{
-        const e=[pos.x-b.min.x,b.max.x-pos.x,pos.z-b.min.z,b.max.z-pos.z],m=Math.min(...e);
-        if(m===e[0])pos.x=b.min.x-r;else if(m===e[1])pos.x=b.max.x+r;
-        else if(m===e[2])pos.z=b.min.z-r;else pos.z=b.max.z+r;
+    const dirs=[[1,0],[-1,0],[0,1],[0,-1],[.707,.707],[.707,-.707],[-.707,.707],[-.707,-.707]];
+    for(let pass=0;pass<2;pass++){
+      for(const [dx,dz] of dirs){
+        const origin=new THREE.Vector3(pos.x,y+0.9,pos.z);
+        const direction=new THREE.Vector3(dx,0,dz).normalize();
+        this.raycaster.set(origin,direction); this.raycaster.near=0.03; this.raycaster.far=r+0.38;
+        const candidates=this.meshRayBounds.filter(v=>
+          v.box.max.y>=y+0.15 && v.box.min.y<=y+1.65 &&
+          v.box.intersectsRay(this.raycaster.ray)
+        ).map(v=>v.mesh);
+        const hits=this.raycaster.intersectObjects(candidates,false);
+        if(!hits.length) continue;
+        const d=hits[0].distance;
+        if(d<r+0.08){
+          const push=(r+0.08-d);
+          pos.x-=direction.x*push;
+          pos.z-=direction.z*push;
+          hit=true;
+        }
       }
     }
     return hit;
