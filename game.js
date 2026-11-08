@@ -849,7 +849,7 @@ class IronMan {
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
   }
   // Thruster glow follows the real hand/foot bones; intensity = flight state.
-  update(dt, flightAmount, speed = 0, boost = false, mode = 'WALK', verticalSpeed = 0, hovering = false) {
+  update(dt, flightAmount, speed = 0, boost = false, mode = 'WALK', verticalSpeed = 0, hovering = false, velocity = null) {
     this.flying += (flightAmount - this.flying) * Math.min(1, dt * 6);
     this.firePulse = Math.max(0, (this.firePulse || 0) - dt);
     if (this.mixer) {
@@ -878,7 +878,7 @@ class IronMan {
       this.previousMode = mode;
     }
     if(this.attackState){this.attackTime+=dt;const t=Math.min(1,this.attackTime/this.attackDuration),wave=Math.sin(t*Math.PI);const arm=this.bones[this.attackState==='punch'?'rArm':'lArm'];const leg=this.bones[this.attackState==='kick'?'rLeg':'lLeg'];if(arm&&this.attackBase[this.attackState==='punch'?'rArm':'lArm']){const base=this.attackBase[this.attackState==='punch'?'rArm':'lArm'];arm.rotation.z=base.z+(this.attackState==='punch'?-0.95:0.35)*wave;}if(this.attackState==='kick'&&leg&&this.attackBase.rLeg){leg.rotation.x=this.attackBase.rLeg.x+0.9*wave;}if(t>=1){for(const [id,v] of Object.entries(this.attackBase)){const b=this.bones[id];if(b)b.rotation.set(v.x,v.y,v.z);}this.attackBase={};this.attackState=null;}}
-    this._lastVelX=0;this._lastVelY=verticalSpeed;this._lastVelZ=-Math.max(0,speed);
+    this._lastVelX=0;this._lastVelY=0;this._lastVelZ=0;if(velocity){const inv=this.root.quaternion.clone().invert();this._jetLocal.copy(velocity).applyQuaternion(inv);this._lastVelX=this._jetLocal.x;this._lastVelY=this._jetLocal.y;this._lastVelZ=this._jetLocal.z;}
     const p=new THREE.Vector3();
     this.root.updateMatrixWorld(true);
     const flightMode=mode==='TAKEOFF'||mode==='FLIGHT'||mode==='LANDING';
@@ -1482,7 +1482,7 @@ async function boot() {
     wind.update(dt, move.pos, move.vel, move.flying && move.speed > 7, sm.camera.position);
     hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading;
     hero.tilt.rotation.set(move.pitch, 0, move.bank);
-    hero.update(dt, move.flying ? 1 : 0, move.speed, inp.boost, move.mode, move.vel.y, inp.hover);
+    hero.update(dt, move.flying ? 1 : 0, move.speed, inp.boost, move.mode, move.vel.y, inp.hover, move.vel);
     city.update(move.pos);
     if(missionEnv.active==='city')traffic.update(dt, move.pos);
     rep.update(dt, inp.boost, mission, hud); mission.update(dt, move.pos, hud); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
