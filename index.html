@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#050a12">
 <title>PROJECT STARK — Mark 85</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{color-scheme:dark;--cyan:#73e7ff;--gold:#e9bd70}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
@@ -341,13 +342,74 @@ body>canvas{position:fixed;inset:0;z-index:0}
  .menuStats{gap:5px;padding:7px 0}
 }
 
+
+/* DEPLOY FLOW POLISH — obvious start action, typography, clean boot artwork */
+#loading .bootSequence{font-family:'Rajdhani','Arial Narrow',sans-serif}
+#loading .bootWordmark{font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:.28em}
+#loading .loaderTitle{font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-size:clamp(22px,3.4vw,34px);letter-spacing:.14em;font-weight:700}
+#loading .loaderSub,#loading .bootFoot{font-family:'Rajdhani',sans-serif;font-weight:600;letter-spacing:.2em}
+#starkIntro img{object-position:center 42%;transform:scale(1.055)}
+#starkIntro.ignite img{transform:scale(1.09)}
+#starkIntro .bootLogoMask{position:absolute;z-index:3;left:0;right:0;bottom:0;height:17%;background:linear-gradient(0deg,#020711 0%,#020711f5 48%,#02071100 100%);pointer-events:none}
+#mainmenu.gameMenu{font-family:'Rajdhani','Arial Narrow',sans-serif}
+.gameMenuTop,.gameMenuBottom,.gameEyebrow,.missionLabel,.gameSubline,.missionCard small,.missionCard b,.gameMenuActions .menuBtn,.suitReadout,.reactorName,.menuStats,.menuHint{font-family:'Rajdhani',sans-serif}
+.gameMenuLeft h1,.missionCard strong{font-family:'Barlow Condensed','Arial Narrow',sans-serif}
+.gameMenuLeft h1{font-size:clamp(42px,7vw,82px);font-weight:800;letter-spacing:.015em}
+.gameMenuLeft h1 span{font-size:.43em;letter-spacing:.24em}
+.missionCard{min-height:64px;padding:11px 15px}
+.missionCard strong{font-size:clamp(18px,2vw,23px);font-weight:700;letter-spacing:.09em}
+.missionCard small{font-size:11px;letter-spacing:.13em}
+.missionCard b{font-size:11px;letter-spacing:.14em}
+.gameMenuBody{padding-bottom:86px;min-height:0}
+.gameMenuLeft{padding-bottom:18px}
+.gameMenuActions{position:fixed;z-index:9;left:clamp(16px,calc((100vw - 1180px)/2),calc((100vw - 1180px)/2 + 58px));bottom:calc(env(safe-area-inset-bottom,0px) + 16px);display:flex;gap:12px;margin:0;padding:10px;background:linear-gradient(90deg,#03101bee,#03101b99);border:1px solid #70dfff44;box-shadow:0 10px 35px #0008;backdrop-filter:blur(12px)}
+.gameMenuActions .menuBtn{min-height:58px;padding:0 25px;font-family:'Rajdhani',sans-serif;font-size:16px;font-weight:700;letter-spacing:.16em}
+.gameMenuActions .primary{min-width:min(310px,48vw);font-size:18px;letter-spacing:.12em;background:linear-gradient(110deg,#42c8eb,#126082);box-shadow:0 0 30px #38cfff55,inset 0 1px #fff8}
+.gameMenuActions .primary span{font-size:19px}
+.gameMenuActions .secondary{min-width:150px;font-size:14px}
+.missionCard:focus-visible,.gameMenuActions .menuBtn:focus-visible{outline:2px solid #c8f8ff;outline-offset:3px}
+@media(max-width:760px){
+ #mainmenu.gameMenu{padding:calc(env(safe-area-inset-top,0px) + 10px) 14px calc(env(safe-area-inset-bottom,0px) + 12px);overflow-y:auto}
+ .gameMenuTop{font-size:8px;letter-spacing:.1em}
+ .gameMenuBody{display:block;overflow:visible;padding:0 0 104px}
+ .gameMenuLeft{padding:12px 0}
+ .gameEyebrow{font-size:9px}
+ .gameMenuLeft h1{font-size:clamp(40px,9vw,64px);margin:8px 0}
+ .gameDivider{margin:12px 0}
+ .missionCards{gap:6px;margin-top:8px}
+ .missionCard{min-height:54px;padding:8px 10px}
+ .missionCard strong{font-size:18px}
+ .missionCard small,.missionCard b{font-size:10px}
+ .gameMenuRight{display:none}
+ .gameMenuBottom{display:none}
+ .gameMenuActions{left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);padding:7px;gap:7px}
+ .gameMenuActions .menuBtn{min-height:54px;padding:0 10px}
+ .gameMenuActions .primary{flex:1;min-width:0;font-size:16px}
+ .gameMenuActions .secondary{min-width:118px;font-size:12px}
+}
+@media(max-height:500px) and (orientation:landscape){
+ #mainmenu.gameMenu{padding-top:6px;padding-bottom:6px}
+ .gameMenuTop{height:22px}
+ .gameMenuBody{padding-bottom:78px}
+ .gameMenuLeft{padding:4px 0}
+ .gameMenuLeft h1{font-size:40px;margin:4px 0}
+ .gameSubline{font-size:9px}
+ .gameDivider{margin:7px 0}
+ .missionCards{gap:4px;margin-top:6px}
+ .missionCard{min-height:42px;padding:5px 9px}
+ .missionCard strong{font-size:16px}
+ .missionCard small,.missionCard b{font-size:9px}
+ .gameMenuActions{bottom:5px}
+ .gameMenuActions .menuBtn{min-height:44px}
+}
+
 </style>
 </head>
 <body>
 <div id="rotate"><div><div style="font-size:36px;margin-bottom:16px">↻</div>ROTATE YOUR PHONE TO LANDSCAPE<br><small style="display:block;margin-top:12px;color:#7893a8">PROJECT STARK IS BUILT FOR WIDE SCREEN</small></div></div>
 <div id="loading">
  <div class="bootSequence">
-  <div class="bootWordmark">STARK <span>INDUSTRIES</span></div>
+  <div class="bootWordmark">MARK 85 <span>ARMOR SYSTEMS</span></div>
   <div class="reactorLoader"><div class="reactorOrbit orbitA"></div><div class="reactorOrbit orbitB"></div><div class="reactorCore"><i></i></div><div class="reactorTicks"></div></div>
   <div class="loaderTitle">MARK <b>85</b> · SYSTEM INITIALIZATION</div>
   <div class="loaderSub" id="loadtext">ESTABLISHING SECURE LINK</div>
@@ -356,7 +418,7 @@ body>canvas{position:fixed;inset:0;z-index:0}
   <div id="errors" aria-live="polite"></div>
  </div>
 </div>
-<div id="starkIntro" aria-hidden="true"><img src="./stark-boot.webp" alt=""></div>
+<div id="starkIntro" aria-hidden="true"><img src="./stark-boot.webp" alt=""><div class="bootLogoMask"></div></div>
 <div id="mainmenu" class="gameMenu">
  <div class="gameMenuTop"><span class="gameBrand"><i></i> STARK INDUSTRIES</span><span>MARK 85 / OPEN WORLD</span><span class="gameBuild">SYSTEM ONLINE <b>●</b></span></div>
  <div class="gameMenuBody">
