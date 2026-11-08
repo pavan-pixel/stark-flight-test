@@ -129,6 +129,7 @@ class AssetManager {
     try {
       const url = await this.url(name);
       await this.prefetch(/^for_substance.*\.(png|jpe?g|tga)$/);
+      if (lc(name) === 'newyork.fbx') await this.prefetch(/^new york-\d+-texture\.png$/i);
       const m = new THREE.LoadingManager(); m.setURLModifier(u => this.urls.get(lc(base(u))) || u);
       const o = await new FBXLoader(m).loadAsync(url); this._ok(name); return o;
     } catch (e) { this._fail(name, e); throw e; }
@@ -1037,7 +1038,7 @@ class HUD {
   setLoading(text, pct) { $('loadtext').textContent = text; if (pct != null) $('loadbar').style.width = pct + '%'; }
   logError(msg) { const d = document.createElement('div'); d.textContent = '⚠ ' + msg.slice(0, 120); $('errors').appendChild(d); }
   setAssetStatus(ok, bad) { $('assetstat').textContent = `ASSETS ${ok}${bad ? ' · ' + bad + ' FAILED' : ''}`; $('assetstat').style.color = bad ? '#ff9b91' : ''; }
-  hideLoading() { $('loading').classList.add('hide'); }
+  hideLoading() { $('loading').classList.add('hide'); const intro=$('starkIntro'); if(!intro)return; requestAnimationFrame(()=>intro.classList.add('ignite')); setTimeout(()=>intro.classList.add('reactorExpand'),1450); setTimeout(()=>intro.classList.add('leave'),2750); setTimeout(()=>intro.remove(),3700); }
   toast(t) { const e = $('toast'); e.textContent = t; e.style.opacity = 1; clearTimeout(this._t); this._t = setTimeout(() => e.style.opacity = 0, 1300); }
   setFlightUI(flying) {
     for (const id of ['fly', 'run', 'attack', 'kick']) $(id).hidden = flying;
