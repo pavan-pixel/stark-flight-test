@@ -183,7 +183,8 @@ class SceneManager {
 // Grid layout (metres). Roads run along lines x = k*PITCH and z = k*PITCH.
 const PITCH = 110, BLOCK = 86, HALF = BLOCK / 2, GRID = 8, SLOT = 37, PAD_H = 0.12;
 const WORLD_LIMIT = (GRID / 2) * PITCH + PITCH * 0.5;
-const BUILDINGS = ['Building_Large_2', 'Building_Medium_2_001', 'Building_Small_1'];
+// Building models are discovered automatically from every mounted ZIP (any file named building_*.gltf).
+const buildingNames = (assets) => [...assets.entries.keys()].filter(k => /^building_.*\.gltf$/.test(k)).map(k => k.slice(0, -5));
 
 function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0), C = new THREE.Color();
@@ -201,12 +202,15 @@ class CityManager {
   async load(progress = () => {}) {
     const a = this.assets; a.maxTex = this.perf.tier.texSize; a.dropNormals = !this.perf.tier.normalMaps; const base = '';
     progress('LOADING BUILDING MODELS', 10);
+    const names = buildingNames(a);
+    if (!names.length) throw new Error('No building_*.gltf models found in any ZIP');
     const [gb, decalCross, decalYellow] = await Promise.all([
-      Promise.all(BUILDINGS.map(n => a.loadGLTF(base + n + '.gltf'))),
+      Promise.all(names.map(n => a.loadGLTF(base + n + '.gltf').catch(() => null))),
       a.loadGLTF(base + 'Decal_Crosswalk.gltf'), a.loadGLTF(base + 'Decal_DoubleYellow_Straight.gltf'),
     ]);
     progress('PROCESSING CITY GEOMETRY', 55);
-    gb.forEach(g => this.templates.push(this._template(g.scene)));
+    gb.forEach(g => { if (g) this.templates.push(this._template(g.scene)); });
+    if (!this.templates.length) throw new Error('All building models failed to load');
     const [asphalt, concrete] = await Promise.all([
       a.loadTexture(base + 'T_Concrete_Asphalt_BaseColor.png', { srgb: true, repeat: 260 }),
       a.loadTexture(base + 'T_Concrete_BaseColor.png', { srgb: true, repeat: 14 }),
@@ -242,10 +246,11 @@ class CityManager {
       const dist = Math.hypot(cx, cz) / (half * PITCH);
       if (r() < 0.08 && dist > 0.15) { this.parks.push({ cx, cz }); continue; }
       for (const qx of [-1, 1]) for (const qz of [-1, 1]) {
-        const ti = Math.floor(r() * 3), t = this.templates[ti];
+        const ti = Math.floor(r() * this.templates.length), t = this.templates[ti];
         const faceZ = r() < 0.5;
         const rot = faceZ ? (qz > 0 ? 0 : Math.PI) : (qx > 0 ? Math.PI / 2 : -Math.PI / 2);
-        const s = Math.min(36 / t.w, 36 / t.d);
+        const target = 18 + r() * 22; // each building gets its own footprint (18-40 m)
+        const s = Math.min(target / t.w, target / t.d);
         const sy = s * (0.85 + r() * 0.5) * (1 + (1 - Math.min(1, dist)) * 0.7);
         const sw = t.w * s, sd = t.d * s;
         const hx = (faceZ ? sw : sd) / 2, hz = (faceZ ? sd : sw) / 2;
