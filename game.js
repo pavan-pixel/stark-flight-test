@@ -122,7 +122,7 @@ function animate(){
   iron.updateMatrixWorld(true);
  }
  const chase=new THREE.Vector3(iron?iron.position.x*.65:0,flight?iron.position.y+2.8:2.2,(iron?iron.position.z:0)+(flight?(boost?14:10):9));
- camera.position.lerp(chase,Math.min(1,dt*3));camera.lookAt(iron?iron.position.clone().add(new THREE.Vector3(0,flight?0.5:1,-(flight?7:2.5)):new THREE.Vector3(0,0,-5));
+ camera.position.lerp(chase,Math.min(1,dt*3));camera.lookAt(iron?iron.position.clone().add(new THREE.Vector3(0,flight?0.5:1,-(flight?7:2.5))):new THREE.Vector3(0,0,-5));
  for(const c of cars){c.position.z+=dt*12;if(c.position.z>30)c.position.z=-1400}
  for(let i=shots.length-1;i>=0;i--){const s=shots[i];s.m.position.addScaledVector(s.v,dt*60);if(--s.life<=0){scene.remove(s.m);s.m.geometry.dispose();shots.splice(i,1)}}
  energy=clamp(energy+(boost?-dt*12:dt*4),0,100);
