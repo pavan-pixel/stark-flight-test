@@ -246,14 +246,15 @@ class SceneManager {
       this.blur = new ShaderPass(MotionBlurShader); this.composer.addPass(this.blur);
       this.composer.addPass(new OutputPass());
       this._pr = this.renderer.getPixelRatio();
-      // Lens flare: ghost rings and glows along the sun line.
-      this.lensflare = new Lensflare();
-      this.lensflare.addElement(new LensflareElement(flareTexture(0), 1000, 0, new THREE.Color(1, 0.9, 0.7)));
-      this.lensflare.addElement(new LensflareElement(flareTexture(1), 240, 0.35, new THREE.Color(1, 0.8, 0.5)));
-      this.lensflare.addElement(new LensflareElement(flareTexture(1), 480, 0.6, new THREE.Color(0.6, 0.8, 1)));
-      this.lensflare.addElement(new LensflareElement(flareTexture(0), 140, 0.9, new THREE.Color(1, 0.7, 0.4)));
-      this.scene.add(this.lensflare);
     }
+    // Lens flare is enabled on mobile too; previously it was hidden inside
+    // the desktop post-processing branch, so iPhones never rendered it.
+    this.lensflare = new Lensflare();
+    this.lensflare.addElement(new LensflareElement(flareTexture(0), 850, 0, new THREE.Color(1, 0.9, 0.72)));
+    this.lensflare.addElement(new LensflareElement(flareTexture(1), 220, 0.32, new THREE.Color(1, 0.78, 0.48)));
+    this.lensflare.addElement(new LensflareElement(flareTexture(1), 420, 0.62, new THREE.Color(0.62, 0.8, 1)));
+    this.lensflare.addElement(new LensflareElement(flareTexture(0), 120, 0.92, new THREE.Color(1, 0.68, 0.38)));
+    this.scene.add(this.lensflare);
     addEventListener('resize', () => this.resize());
     perf.onTierChange = t => this.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio));
   }
@@ -266,9 +267,11 @@ class SceneManager {
     if (this._environmentSource && this._environmentSource !== texture) this._environmentSource.dispose();
     this._environmentTarget = target;
     this._environmentSource = texture;
+    // Keep the procedural sky dome as the visible world background.
+    // The EXR is an image-based lighting source only; using it as the background
+    // creates a flat photographic street horizon behind the 3D city.
     this.scene.environment = target.texture;
-    this.scene.background = texture;
-    this.sky.visible = false;
+    this.sky.visible = true;
     return true;
   }
   resize() {
