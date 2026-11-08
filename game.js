@@ -800,6 +800,7 @@ class IronMan {
   // Thruster glow follows the real hand/foot bones; intensity = flight state.
   update(dt, flightAmount, speed = 0, boost = false, mode = 'WALK', verticalSpeed = 0, hovering = false) {
     this.flying += (flightAmount - this.flying) * Math.min(1, dt * 6);
+    this.firePulse = Math.max(0, (this.firePulse || 0) - dt);
     if (this.mixer) {
       this.mixer.update(dt);
       let desired = 'idle', oneShot = false;
@@ -828,10 +829,10 @@ class IronMan {
     const p = new THREE.Vector3();
     this.root.updateMatrixWorld(true);
     for (const s of this.glows) {
-      const b = this.bones[s.userData.bone]; s.visible = !!b && this.flying > 0.05;
+      const b = this.bones[s.userData.bone]; s.visible = !!b && (this.flying > 0.05 || (this.firePulse > 0 && s.userData.bone.includes('Hand')));
       if (!s.visible) continue;
       b.getWorldPosition(p); this.root.worldToLocal(p); s.position.copy(p);
-      const foot = s.userData.bone.endsWith('Foot'); s.scale.setScalar((foot ? 0.9 : 0.55) * this.flying * (1 + Math.min(1.2, speed * 0.02) + (boost ? 1.5 : 0)) * (0.9 + Math.random() * 0.2));
+      const foot = s.userData.bone.endsWith('Foot'); s.scale.setScalar((foot ? 0.9 : 0.55) * Math.max(this.flying, this.firePulse * 5) * (1 + Math.min(1.2, speed * 0.02) + (boost ? 1.5 : 0)) * (0.9 + Math.random() * 0.2));
     }
     if (this.bloom) { const target = boost ? 0.9 : 0, s = 3.5 + (boost ? 3 : 0) + Math.sin(performance.now() * 0.02) * 0.4 * (boost ? 1 : 0);
       this.bloom.material.opacity += (target - this.bloom.material.opacity) * Math.min(1, dt * 8); this.bloom.scale.set(s, s, 1); }
@@ -954,7 +955,7 @@ class ThirdPersonCamera {
 class RepulsorSystem {
   constructor(scene) {
     this.scene = scene; this.energy = 100; this.last = 0; this.shots = [];
-    this.geo = new THREE.SphereGeometry(0.16, 8, 8); this.mat = new THREE.MeshBasicMaterial({ color: 0x8ff0ff, fog: false });
+    this.geo = new THREE.SphereGeometry(0.14, 10, 8); this.mat = new THREE.MeshBasicMaterial({ color: 0x9ff4ff, fog: false }); this.axis = new THREE.Vector3(0,0,1);
     this.pool = [];
   }
   fire(origins, dir) {
@@ -962,8 +963,8 @@ class RepulsorSystem {
     if (this.energy < 6 || now - this.last < 220) return false;
     this.last = now; this.energy -= 6;
     for (const o of origins) {
-      const m = this.pool.pop() || new THREE.Mesh(this.geo, this.mat); m.position.copy(o); this.scene.add(m);
-      this.shots.push({ m, v: dir.clone().multiplyScalar(120), life: 2.2 });
+      const m = this.pool.pop() || new THREE.Mesh(this.geo, this.mat); m.position.copy(o); m.scale.set(0.85,0.85,4.2); m.quaternion.setFromUnitVectors(this.axis,dir); this.scene.add(m);
+      this.shots.push({ m, v: dir.clone().multiplyScalar(150), life: 1.8 });
     }
     return true;
   }
@@ -1025,6 +1026,9 @@ class HUD {
     $('fly').addEventListener('click', () => this.handlers.fly && this.handlers.fly());
     $('land').addEventListener('click', () => this.handlers.land && this.handlers.land());
     $('fire').addEventListener('click', () => this.handlers.fire && this.handlers.fire());
+    $('startGame').addEventListener('click', () => this.handlers.start && this.handlers.start());
+    $('openTutorial').addEventListener('click', () => $('tutorial').classList.add('show'));
+    $('closeTutorial').addEventListener('click', () => $('tutorial').classList.remove('show'));
     $('cine').addEventListener('click', () => this.handlers.cine && this.handlers.cine());
     this._hold('boost', 'boost', true); this._hold('up', 'up', 1); this._hold('down', 'down', 1);
   }
@@ -1229,8 +1233,18 @@ class StoryMission {
 
 // ===== main.js =====
 
+let gameStarted = false;
 const hud = new HUD();
 const failures = [];
+function drawMiniMap(pos, heading, mission) {
+ const c=document.getElementById('minimap'); if(!c)return;
+ const x=c.getContext('2d'),w=c.width,h=c.height,sc=w/(WORLD_LIMIT*2);
+ x.clearRect(0,0,w,h);x.fillStyle='#071725';x.fillRect(0,0,w,h);
+ x.strokeStyle='rgba(130,220,255,.14)';x.lineWidth=1;
+ for(let i=1;i<4;i++){x.beginPath();x.moveTo(i*w/4,0);x.lineTo(i*w/4,h);x.stroke();x.beginPath();x.moveTo(0,i*h/4);x.lineTo(w,i*h/4);x.stroke();}
+ for(const t of mission.targets)if(t.alive){x.fillStyle='#ff665d';x.beginPath();x.arc(w/2+t.root.position.x*sc,h/2+t.root.position.z*sc,3.5,0,Math.PI*2);x.fill();}
+ x.save();x.translate(w/2+pos.x*sc,h/2+pos.z*sc);x.rotate(-heading);x.fillStyle='#9ff4ff';x.beginPath();x.moveTo(0,-8);x.lineTo(5,6);x.lineTo(0,3);x.lineTo(-5,6);x.closePath();x.fill();x.restore();
+}
 async function boot() {
   const perf = new PerformanceManager();
   const sm = new SceneManager(perf);
@@ -1271,14 +1285,15 @@ async function boot() {
 
   hud.on('fly', () => { if (move.takeoff()) { hud.setFlightUI(true); cam.bump(0.05); cine.trigger('TAKEOFF', 1.7); hud.toast('TAKEOFF — THRUSTERS ENGAGED'); } });
   hud.on('land', () => { if (move.land()) { cine.trigger('LANDING', 2.0); hud.toast('LANDING'); } });
-  hud.on('cine', () => { const on=cine.toggle(); hud.toast(on?'CINEMATIC CAMERA':'MANUAL CAMERA'); });
+  hud.on('start', () => { gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); cine.enabled = false; });
+
   hud.on('cine', () => { const on=cine.toggle(); hud.toast(on?'CINEMATIC CAMERA':'MANUAL CAMERA'); });
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   hud.on('fire', () => {
-    if (!move.flying) return;
+    if (!gameStarted || !move.flying) return;
     dir.set(-Math.sin(cam.yaw), -Math.sin(cam.pitch) * 0.3, -Math.cos(cam.yaw)).normalize();
     const o = [hero.worldPosOf('lHand', new THREE.Vector3()), hero.worldPosOf('rHand', new THREE.Vector3())];
-    if (rep.fire(o, dir)) cam.bump(0.03);
+    if (rep.fire(o, dir)) { cam.bump(0.08); hero.firePulse = 0.18; }
   });
 
   const clock = new THREE.Clock();
@@ -1286,6 +1301,7 @@ async function boot() {
     requestAnimationFrame(frame);
     const dt = Math.min(clock.getDelta(), 0.05);
     perf.frame(dt);
+    if (!gameStarted) { cine.update(dt, move); hero.root.position.copy(move.pos); city.update(move.pos); traffic.update(dt, move.pos); sm.render(move.pos, {}); return; }
     const inp = { x: hud.steer.x, y: hud.steer.y, run: hud.input.run, boost: hud.input.boost && move.mode === MODE.FLY && rep.energy > 1, hover: hud.input.hover, up: hud.input.up, down: hud.input.down };
     move.update(dt, inp, cam.yaw, city);
     if (move.landed) { move.landed = false; hud.setFlightUI(false); hud.toast('LANDED — WALK MODE'); cam.bump(0.06); }
@@ -1299,8 +1315,8 @@ async function boot() {
     city.update(move.pos);
     traffic.update(dt, move.pos);
     rep.update(dt, inp.boost, mission, hud); mission.update(dt, hud); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
-    cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed }); cine.update(dt, move);
-    hud.readout(move.mode, move.pos.y, move.speed * 3.6, rep.energy);
+    if (cine.enabled) cine.update(dt, move); else cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed });
+    hud.readout(move.mode, move.pos.y, move.speed * 3.6, rep.energy); drawMiniMap(move.pos, move.heading, mission);
     sm.render(move.pos, { speed: move.speed, boost: inp.boost });
   })();
 }
