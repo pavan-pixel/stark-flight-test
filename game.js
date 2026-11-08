@@ -129,6 +129,7 @@ class AssetManager {
     try {
       const url = await this.url(name);
       await this.prefetch(/^for_substance.*\.(png|jpe?g|tga)$/);
+      if (lc(name) === 'newyork.fbx') await this.prefetch(/^new york-\d+-texture\.png$/i);
       const m = new THREE.LoadingManager(); m.setURLModifier(u => this.urls.get(lc(base(u))) || u);
       const o = await new FBXLoader(m).loadAsync(url); this._ok(name); return o;
     } catch (e) { this._fail(name, e); throw e; }
@@ -617,6 +618,46 @@ class CityManager {
 }
 
 
+
+// ===== environment/NYCWorld.js =====
+// Optional authored NYC world. Procedural city remains the safe fallback if the archive is absent.
+class NYCWorld {
+  constructor(scene, assets, perf, fallbackCity) {
+    this.scene=scene; this.assets=assets; this.perf=perf; this.fallbackCity=fallbackCity;
+    this.group=new THREE.Group(); this.group.visible=false; scene.add(this.group);
+    this.ready=false; this.bounds=new THREE.Box3();
+  }
+  async load(progress=()=>{}) {
+    const a=this.assets;
+    if(!a.has('newyork.fbx')) return false;
+    progress('LOADING NEW YORK WORLD',5);
+    const root=await a.loadFBX('NewYork.fbx');
+    root.updateMatrixWorld(true);
+    this.bounds.setFromObject(root);
+    const size=this.bounds.getSize(new THREE.Vector3());
+    const span=Math.max(size.x,size.z);
+    if(!Number.isFinite(span)||span<1) throw new Error('NYC model has invalid dimensions');
+    const targetSpan=this.perf.isMobile?1180:1680, scale=targetSpan/span;
+    root.scale.setScalar(scale); root.updateMatrixWorld(true);
+    this.bounds.setFromObject(root);
+    const center=this.bounds.getCenter(new THREE.Vector3());
+    root.position.x-=center.x; root.position.z-=center.z; root.position.y-=this.bounds.min.y;
+    root.updateMatrixWorld(true);
+    let meshCount=0;
+    root.traverse(o=>{
+      if(!o.isMesh)return; meshCount++; o.castShadow=false; o.receiveShadow=true;
+      o.frustumCulled=true;
+      const mats=Array.isArray(o.material)?o.material:[o.material];
+      for(const m of mats) if(m){m.envMapIntensity=.48;if(m.isMeshStandardMaterial){m.roughness=Math.max(.28,m.roughness||.65);m.needsUpdate=true;}}
+    });
+    if(!meshCount) throw new Error('NYC FBX contains no renderable meshes');
+    this.group.add(root); this.ready=true; this.group.visible=true;
+    this.fallbackCity.group.visible=false;
+    return true;
+  }
+  activate(){if(this.ready){this.group.visible=true;this.fallbackCity.group.visible=false;return true;}return false;}
+}
+
 // ===== character/IronMan.js =====
 
 const TEX = 'For_Substance_Low_Polly_';
@@ -922,10 +963,10 @@ class ThirdPersonCamera {
       const p = this.pointers.get(e.pointerId); if (!p) return;
       const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
       if (this.pointers.size >= 2) { const s = this._span(); this.userDist = clamp(this.userDist * (this.pinch / Math.max(s, 1)), 0.6, 2.2); this.pinch = s; }
-      else { this.yaw -= dx * 0.006; this.pitch = clamp(this.pitch + dy * 0.004, -0.3, 1.0); }
+      else { this.yaw -= dx * 0.0044; this.pitch = clamp(this.pitch + dy * 0.0031, -0.34, 0.92); }
     });
-    const up = e => { this.pointers.delete(e.pointerId); };
-    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    const up = e => { this.pointers.delete(e.pointerId); if (this.pointers.size < 2) this.pinch = 0; };
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); el.addEventListener('lostpointercapture', up);
     el.addEventListener('wheel', e => { this.userDist = clamp(this.userDist * (1 + e.deltaY * 0.001), 0.6, 2.2); }, { passive: true });
   }
   _span() { const a = [...this.pointers.values()]; return a.length < 2 ? 1 : Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); }
@@ -997,7 +1038,7 @@ class HUD {
   setLoading(text, pct) { $('loadtext').textContent = text; if (pct != null) $('loadbar').style.width = pct + '%'; }
   logError(msg) { const d = document.createElement('div'); d.textContent = '⚠ ' + msg.slice(0, 120); $('errors').appendChild(d); }
   setAssetStatus(ok, bad) { $('assetstat').textContent = `ASSETS ${ok}${bad ? ' · ' + bad + ' FAILED' : ''}`; $('assetstat').style.color = bad ? '#ff9b91' : ''; }
-  hideLoading() { $('loading').classList.add('hide'); }
+  hideLoading() { $('loading').classList.add('hide'); const intro=$('starkIntro'); if(!intro)return; requestAnimationFrame(()=>intro.classList.add('ignite')); setTimeout(()=>intro.classList.add('reactorExpand'),1450); setTimeout(()=>intro.classList.add('leave'),2750); setTimeout(()=>intro.remove(),3700); }
   toast(t) { const e = $('toast'); e.textContent = t; e.style.opacity = 1; clearTimeout(this._t); this._t = setTimeout(() => e.style.opacity = 0, 1300); }
   setFlightUI(flying) {
     for (const id of ['fly', 'run', 'attack', 'kick']) $(id).hidden = flying;
@@ -1011,8 +1052,9 @@ class HUD {
   _joystick() {
     const joy = $('joy'), stick = $('stick'); let pid = null;
     const move = e => {
-      const r = joy.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2), max = r.width * 0.34, len = Math.hypot(dx, dy), k = Math.min(1, max / (len || 1));
-      this.steer.x = dx * k / max; this.steer.y = -dy * k / max; stick.style.transform = `translate(${dx * k}px,${dy * k}px)`;
+      const r = joy.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2), max = r.width * 0.39, len = Math.hypot(dx, dy), k = Math.min(1, max / (len || 1)), rawX = dx * k / max, rawY = -dy * k / max, mag = Math.hypot(rawX, rawY);
+      const dead = 0.10, shaped = mag <= dead ? 0 : Math.pow((mag - dead) / (1 - dead), 1.28);
+      const scale = mag > 0 ? shaped / mag : 0; this.steer.x = rawX * scale; this.steer.y = rawY * scale; stick.style.transform = `translate(${dx * k}px,${dy * k}px)`;
     };
     joy.addEventListener('pointerdown', e => { pid = e.pointerId; joy.setPointerCapture(pid); move(e); });
     joy.addEventListener('pointermove', e => { if (e.pointerId === pid) move(e); });
@@ -1216,7 +1258,7 @@ class CinematicDirector {
   }else if(this.mode==='INTRO'){
    const t=THREE.MathUtils.clamp(this.time/this.duration,0,1),e=t*t*(3-2*t);
    p.set(h.x+1.5,h.y+1.9,h.z+2.4).lerp(new THREE.Vector3(h.x-f.x*9+3,h.y+4.8,h.z-f.z*9+11),e);
-   if(t>=1){const completed=this.mode;this.mode='FOLLOW';this.time=0;if(completed!=='INTRO')this.enabled=false;}
+   if(t>=1){this.mode='FOLLOW';this.time=0;this.enabled=false;}
   }else if(this.mode==='TAKEOFF'||this.mode==='BOOST'||this.mode==='LANDING'){
    const t=THREE.MathUtils.clamp(this.time/this.duration,0,1);
    const d=this.mode==='BOOST'?15: this.mode==='LANDING'?8:7;
@@ -1287,7 +1329,7 @@ class CombatMission {
  makeSoldier(i){const g=new THREE.Group(),armor=new THREE.MeshStandardMaterial({color:i%2?0x6c747b:0x39434d,metalness:.65,roughness:.4}),dark=new THREE.MeshStandardMaterial({color:0x151b22,metalness:.25,roughness:.65}),visor=new THREE.MeshBasicMaterial({color:0xff543e});const part=(geo,mat,x,y,z)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;g.add(m);return m;};part(new THREE.CapsuleGeometry(.34,.72,4,8),armor,0,1.05,0);part(new THREE.SphereGeometry(.25,10,8),dark,0,1.78,0);part(new THREE.BoxGeometry(.34,.08,.08),visor,0,1.8,-.22);for(const side of [-1,1]){part(new THREE.CapsuleGeometry(.12,.58,4,6),armor,side*.48,1.15,0);part(new THREE.CapsuleGeometry(.13,.7,4,6),dark,side*.19,.4,0);}return g;}
  makeDrone(){const g=new THREE.Group(),m=new THREE.MeshStandardMaterial({color:0x354653,metalness:.8,roughness:.3}),red=new THREE.MeshBasicMaterial({color:0xff553e});g.add(new THREE.Mesh(new THREE.SphereGeometry(.65,12,8),m));g.add(new THREE.Mesh(new THREE.BoxGeometry(2.8,.2,.6),m));const e=new THREE.Mesh(new THREE.SphereGeometry(.18,8,6),red);e.position.z=-.55;g.add(e);return g;}
  hit(point,hud){let found=null,dmin=7;for(const t of this.targets)if(t.alive){const d=t.root.position.distanceTo(point);if(d<dmin){found=t;dmin=d;}}if(!found)return false;found.hp--;if(found.hp<=0){found.alive=false;found.root.visible=false;}else found.root.scale.multiplyScalar(.94);if(hud)hud.toast(found.hp?'ARMOR HIT':'HOSTILE NEUTRALIZED');if(this.targets.every(t=>!t.alive)){this.complete=true;if(hud)hud.toast('MISSION COMPLETE · AREA SECURE');}return true;}
- melee(pos,heading,type,hero,hud){const f=new THREE.Vector3(-Math.sin(heading),0,-Math.cos(heading));let target=null,best=type==='kick'?4.4:3.5;for(const t of this.targets)if(t.alive&&t.kind==='soldier'){const d=t.root.position.clone().sub(pos),forward=d.x*f.x+d.z*f.z;if(forward>-.2&&d.length()<best){best=d.length();target=t;}}if(!target){if(hud)hud.toast('NO TARGET IN RANGE');return false;}target.hp-=type==='kick'?2:1;hero.attack(type);if(target.hp<=0){target.alive=false;target.root.visible=false;if(hud)hud.toast('HOSTILE DOWN');}else if(hud)hud.toast('IMPACT · ARMOR DAMAGED');if(this.targets.every(t=>!t.alive))this.complete=true;return true;}
+ melee(pos,heading,type,hero,hud){const f=new THREE.Vector3(-Math.sin(heading),0,-Math.cos(heading));let target=null,best=type==='kick'?4.4:3.5;for(const t of this.targets)if(t.alive&&t.kind==='soldier'){const d=t.root.position.clone().sub(pos),forward=d.x*f.x+d.z*f.z;if(forward>-.2&&d.length()<best){best=d.length();target=t;}}if(!target){if(hud)hud.toast('NO TARGET IN RANGE');return false;}target.hp-=type==='kick'?2:1;if(target.hp<=0){target.alive=false;target.root.visible=false;if(hud)hud.toast('HOSTILE DOWN');}else if(hud)hud.toast('IMPACT · ARMOR DAMAGED');if(this.targets.every(t=>!t.alive))this.complete=true;return true;}
  update(dt,pos,hud){this.elapsed+=dt;for(const t of this.targets)if(t.alive){t.phase+=dt;const p=t.root.position;if(t.kind==='drone'){p.y+=Math.sin(t.phase*1.4)*dt*1.1;t.root.rotation.y+=dt*.45;}else{const dx=pos.x-p.x,dz=pos.z-p.z,d=Math.hypot(dx,dz);if(d<38){t.root.rotation.y=Math.atan2(dx,dz);if(d>3.2){p.x+=dx/d*dt*2;p.z+=dz/d*dt*2;}t.attack-=dt;if(d<18&&t.attack<=0){this.playerHealth=Math.max(0,this.playerHealth-5);t.attack=2.4;if(hud)hud.toast('J.A.R.V.I.S.: INCOMING FIRE');}}}}
   const alive=this.targets.filter(t=>t.alive).length,el=document.getElementById('mission');if(el)el.textContent=this.complete?'OBJECTIVE COMPLETE · AREA SECURE':'OPERATION '+this.activeName+' · HOSTILES '+alive+'/'+this.targets.length;const hv=document.getElementById('healthValue');if(hv)hv.textContent=Math.round(this.playerHealth)+'%';
  }
@@ -1312,6 +1354,7 @@ async function boot() {
   const sm = new SceneManager(perf);
   const assets = new AssetManager({ onError: m => { failures.push(m); hud.logError(m); }, onStatus: (ok, bad) => hud.setAssetStatus(ok, bad) });
   const city = new CityManager(sm.scene, assets, perf);
+  const nycWorld = new NYCWorld(sm.scene, assets, perf, city);
   const hero = new IronMan(assets, perf);
   const move = new MovementController();
   const cam = new ThirdPersonCamera(sm.camera, city);
@@ -1326,18 +1369,19 @@ async function boot() {
   const citySurfaceAt = city.surfaceAt.bind(city), cityResolveCircle = city.resolveCircle.bind(city);
   city.surfaceAt = (x,z) => missionEnv.surfaceAt(x,z,citySurfaceAt);
   city.resolveCircle = (pos,r,y) => missionEnv.active==='city' ? cityResolveCircle(pos,r,y) : missionEnv.resolveCircle(pos,r,y);
-  missionEnv.setMission('carrier'); mission.build('carrier'); move.pos.copy(missionEnv.spawn);
+  missionEnv.setMission('city'); mission.build('city'); move.pos.set(0,0,0);
   sm.scene.add(hero.root);
   perf.onTierChange = t => { sm.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio)); city.setRadii(t.nearRadius, t.farRadius); hud.toast('QUALITY: ' + t.name.toUpperCase()); };
 
   hud.setLoading('READING ASSET ARCHIVES', 2);
-  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip', 'stark-next-animations.zip', 'stark-next-city.zip', 'stark-next-apartments.zip', 'kenney_city-kit-commercial_2_1.zip', 'stark-environment-pack.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
+  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip', 'stark-next-animations.zip', 'stark-next-city.zip', 'stark-next-apartments.zip', 'kenney_city-kit-commercial_2_1.zip', 'stark-environment-pack.zip', 'stark-nyc-world-optimized.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
   // Hero first (playable immediately), city second; either failure is reported and never blocks the loop.
-  let heroOk = true, cityOk = true;
+  let heroOk = true, cityOk = true, nycOk = false;
   await Promise.all([
     hero.load((t, p) => hud.setLoading(t, p * 0.45)).catch(e => { heroOk = false; hud.setLoading('MARK 85 ERROR: ' + e.message, 100); }),
     city.load((t, p) => hud.setLoading(t, 45 + p * 0.55)).catch(e => { cityOk = false; hud.logError('CITY: ' + e.message); }),
     traffic.loadModels(assets).catch(e => { hud.logError('TRAFFIC MODELS: ' + e.message); return false; }),
+    nycWorld.load((t,p)=>hud.setLoading(t,72+p*.22)).then(ok=>{nycOk=ok;}).catch(e=>{hud.logError('NYC WORLD: '+e.message);nycOk=false;}),
   ]);
   const environment = await assets.loadEXR('modern_evening_street_1k.exr').catch(() => null);
   if (environment) sm.setEnvironment(environment);
@@ -1370,11 +1414,11 @@ async function boot() {
     document.getElementById('jarvisTag').textContent = 'SYSTEM BRIEFING / ' + btn.dataset.topic.toUpperCase();
     if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(v[1]); u.rate = 0.94; u.pitch = 0.88; window.speechSynthesis.speak(u); }
   }));
-  hud.on('start', () => { const selected=document.getElementById('missionSelect')?.value||'carrier'; missionEnv.setMission(selected); mission.build(selected); move.pos.copy(missionEnv.spawn); move.vel.set(0,0,0); move.heading=0; move.mode=MODE.WALK; gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); hud.setFlightUI(false); cine.trigger('INTRO', 2.4); });
+  hud.on('start', () => { const selected=document.getElementById('missionSelect')?.value||'city'; missionEnv.setMission(selected); mission.build(selected); if(selected==='city'&&nycOk){nycWorld.activate();move.pos.set(0,0,0);}else{nycWorld.group.visible=false;city.group.visible=selected==='city';move.pos.copy(missionEnv.spawn);} move.vel.set(0,0,0); move.heading=0; move.mode=MODE.WALK; gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); hud.setFlightUI(false); cine.trigger('INTRO', 2.4); });
 
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   let cameraMode='THIRD', lockedTarget=null;
-  hud.on('attack', type => { if(!gameStarted || move.flying)return; mission.melee(move.pos,move.heading,type,hero,hud); cam.bump(type==='kick'?.13:.08); });
+  hud.on('attack', type => { if(!gameStarted || move.flying)return; hero.attack(type); mission.melee(move.pos,move.heading,type,hero,hud); cam.bump(type==='kick'?.13:.08); });
   hud.on('view', () => { cameraMode=cameraMode==='THIRD'?'FIRST':'THIRD'; document.getElementById('view').textContent=cameraMode==='FIRST'?'HELMET':'3RD PERSON'; document.getElementById('helmetHud').classList.toggle('active',cameraMode==='FIRST'); hud.toast(cameraMode==='FIRST'?'HELMET VIEW':'THIRD-PERSON VIEW'); });
   hud.on('lock', () => { const alive=mission.targets.filter(t=>t.alive);lockedTarget=alive.length?alive.reduce((best,t)=>t.root.position.distanceTo(move.pos)<best.root.position.distanceTo(move.pos)?t:best):null;document.getElementById('targetStatus').textContent=lockedTarget?'LOCKED':'NO SIGNAL';hud.toast(lockedTarget?'TARGET ACQUIRED':'NO HOSTILE SIGNAL'); });
   hud.on('fire', () => {

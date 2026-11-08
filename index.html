@@ -153,6 +153,40 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #healthValue,#helmetEnergy,#targetStatus{color:#f4d58c}
 @media(max-height:440px){.missionPicker{margin-top:6px}.missionPicker select{padding:6px}.helmetTop,.helmetBottom{padding:7px 0}#ui .btn{height:37px}}
 
+
+/* STARK tactical HUD — compact, tactile, icon-led controls */
+:root{--stark-cyan:#8cecff;--stark-blue:#16384d;--stark-gold:#f1c77f;--stark-red:#ff716d}
+#ui{font-family:Inter,system-ui,sans-serif}
+#mission{top:max(12px,env(safe-area-inset-top));padding:8px 16px;border:1px solid #8cecff45;background:linear-gradient(180deg,#071b2cdd,#06111cbb);box-shadow:0 8px 28px #0005,inset 0 0 18px #51d9ff0c;backdrop-filter:blur(16px);font-size:9px;letter-spacing:.18em;color:#c8f5ff}
+#minimapWrap{width:clamp(92px,13vw,132px);height:clamp(92px,13vw,132px);top:max(62px,env(safe-area-inset-top) + 48px);border:1px solid #83e9ff99;box-shadow:0 0 0 4px #04121b99,0 0 30px #37cfff22;background:#061521dd}
+.joystick{width:clamp(104px,15vw,132px);height:clamp(104px,15vw,132px);border:1px solid #8cecff88;background:radial-gradient(circle,#15394c99 0%,#071726dd 68%);box-shadow:inset 0 0 25px #55dfff19,0 10px 30px #0006}
+.stick{width:48px;height:48px;left:calc(50% - 24px);top:calc(50% - 24px);border:1px solid #d3fbff;background:radial-gradient(circle at 34% 28%,#efffff,#75dff6 35%,#17607f 78%);box-shadow:0 0 22px #61dcff99,inset 0 0 8px #fff9;will-change:transform}
+#ui .controls{grid-template-columns:repeat(3,clamp(54px,7vw,70px));gap:8px;max-width:236px}
+#ui .btn{height:clamp(42px,6.2vh,52px);min-width:0;border-radius:15px;border:1px solid #80dfff77;background:linear-gradient(155deg,#15354bdd,#071522f2);color:#d9f8ff;font-size:8px;font-weight:800;letter-spacing:.09em;box-shadow:0 7px 18px #0006,inset 0 1px #ffffff12;backdrop-filter:blur(14px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;transition:transform .12s,border-color .12s,filter .12s}
+#ui .btn:active,#ui .btn.on{transform:translateY(1px) scale(.96);border-color:#c4f7ff;background:linear-gradient(155deg,#267b99,#0c3044);box-shadow:0 0 22px #44d9ff55,inset 0 0 12px #baf5ff22}
+#ui .btn.gold{border-color:#e8c47a99;color:#ffe4b0;background:linear-gradient(155deg,#493b24dd,#171b20f5)}
+#ui .btn.red{border-color:#ff807a99;color:#ffd1cc;background:linear-gradient(155deg,#4a2026dd,#17121af5)}
+#ui .btn .glyph{font-size:17px;line-height:17px;font-weight:500;letter-spacing:0;text-shadow:0 0 12px currentColor}
+#ui .btn .btnLabel{font-size:7px;line-height:9px;letter-spacing:.12em}
+#helmetHud{background:radial-gradient(ellipse at center,transparent 45%,#04101b18 72%,#04101b66 100%)}
+.helmetTop,.helmetBottom{border-color:#8cecff66;text-shadow:0 0 12px #52dfff;color:#c8f5ff}
+.helmetReticle{width:58px;height:58px;border-color:#9cf1ffbb;box-shadow:0 0 18px #4bdfff33,inset 0 0 14px #4bdfff18}
+@media(max-width:700px){#ui .controls{grid-template-columns:repeat(3,54px);gap:6px;max-width:174px}#ui .btn{height:43px;border-radius:12px}.bottom{left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom))}}
+@media(max-height:440px){#ui .controls{grid-template-columns:repeat(3,52px);gap:5px}#ui .btn{height:39px}.joystick{width:96px;height:96px}}
+
+/* Cinematic Mark 85 boot reveal: reactor ignition opens the database menu */
+#starkIntro{position:fixed;inset:0;z-index:15;overflow:hidden;opacity:0;pointer-events:none;background:#020711;transition:opacity .45s ease}
+#starkIntro.ignite{opacity:1}
+#starkIntro img{position:absolute;width:100%;height:100%;inset:0;object-fit:cover;object-position:center 46%;transform:scale(1.025);filter:brightness(.88) saturate(1.08);transition:transform 3.2s cubic-bezier(.18,.7,.18,1),filter 2.2s ease,opacity .65s ease}
+#starkIntro.ignite img{transform:scale(1);filter:brightness(1) saturate(1.16)}
+#starkIntro:before{content:"";position:absolute;inset:0;z-index:1;background:radial-gradient(ellipse at 50% 47%,transparent 0 12%,#06101b22 38%,#02050bcc 100%);pointer-events:none}
+#starkIntro:after{content:"";position:absolute;z-index:2;left:50%;top:47.7%;width:30px;height:30px;border-radius:50%;transform:translate(-50%,-50%) scale(.18);opacity:0;background:radial-gradient(circle,#fff 0 4%,#bdfaff 13%,#55eaff 28%,#1e9dff66 48%,transparent 72%);box-shadow:0 0 28px 14px #62eaffaa,0 0 90px 38px #168dff66;transition:transform 1.15s cubic-bezier(.12,.78,.12,1),opacity .3s ease}
+#starkIntro.ignite:after{opacity:1;transform:translate(-50%,-50%) scale(1);animation:reactorPulse .85s ease-in-out infinite alternate}
+#starkIntro.reactorExpand:after{animation:none;opacity:1;transform:translate(-50%,-50%) scale(100);transition:transform 1.35s cubic-bezier(.14,.8,.12,1),opacity 1.25s ease}
+#starkIntro.leave{opacity:0}
+#starkIntro.leave img{opacity:0;transform:scale(1.08)}
+@keyframes reactorPulse{from{filter:brightness(1);box-shadow:0 0 25px 12px #62eaff99,0 0 70px 30px #168dff55}to{filter:brightness(1.8);box-shadow:0 0 42px 22px #a6f8ffdd,0 0 130px 65px #168dff99}}
+@media(prefers-reduced-motion:reduce){#starkIntro img,#starkIntro:after{transition-duration:.2s;animation:none}}
 </style>
 </head>
 <body>
@@ -168,6 +202,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   <div id="errors" aria-live="polite"></div>
  </div>
 </div>
+<div id="starkIntro" aria-hidden="true"><img src="./stark-boot.webp" alt=""></div>
 <div id="mainmenu">
  <div class="databaseTop"><span>STARK INDUSTRIES</span><span>MARK 85 / SYSTEM DATABASE</span><span>LEVEL 01&nbsp;&nbsp; CREDITS 000</span></div>
  <div class="databaseLayout">
@@ -196,7 +231,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
    <div class="jarvisRule"></div>
    <div class="jarvisHint">J.A.R.V.I.S. RECOMMENDS</div>
    <div class="jarvisText" id="jarvisHint">Select a database category. I will brief you on the selected system.</div>
-   <div class="missionPicker"><label for="missionSelect">DEPLOYMENT ZONE</label><select id="missionSelect"><option value="carrier">CARRIER STRIKE</option><option value="base">MILITARY BASE ASSAULT</option><option value="city">CITY DEFENSE</option></select></div><div class="menuActions"><button class="menuBtn primary" id="startGame">DEPLOY MARK 85</button><button class="menuBtn" id="openTutorial">TACTICAL BRIEFING</button></div>
+   <div class="missionPicker"><label for="missionSelect">DEPLOYMENT ZONE</label><select id="missionSelect"><option value="city">NEW YORK CITY</option><option value="carrier">CARRIER STRIKE</option><option value="base">MILITARY BASE ASSAULT</option></select></div><div class="menuActions"><button class="menuBtn primary" id="startGame">DEPLOY MARK 85</button><button class="menuBtn" id="openTutorial">TACTICAL BRIEFING</button></div>
   </section>
  </div>
  <div class="databaseBottom"><span>STARK INDUSTRIES / R&D DIVISION</span><span>J.A.R.V.I.S. VOICE INTERFACE ENABLED</span><span>BUILD 01.85</span></div>
@@ -207,10 +242,10 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
  <div id="toast"></div><div id="mission">OPERATION · HOSTILES 0/6</div><div id="helmetHud"><div class="helmetTop"><span>J.A.R.V.I.S. / TACTICAL LINK</span><span id="healthValue">100%</span></div><div class="helmetReticle">+</div><div class="helmetBottom"><span>ARC REACTOR <b id="helmetEnergy">100%</b></span><span>THREAT SCAN <b id="targetStatus">STANDBY</b></span></div></div><div id="minimapWrap"><canvas id="minimap" width="160" height="160"></canvas></div>
  <div class="bottom"><div><div class="joystick" id="joy"><div class="stick" id="stick"></div></div></div>
  <div class="controls">
-  <button class="btn" id="run">RUN</button><button class="btn" id="attack" hidden>PUNCH</button><button class="btn" id="kick" hidden>KICK</button><button class="btn gold" id="fly">FLY</button>
-  <button class="btn" id="up" hidden>UP</button><button class="btn" id="down" hidden>DOWN</button>
-  <button class="btn gold" id="land" hidden>LAND</button><button class="btn" id="hover" hidden>HOVER</button>
-  <button class="btn gold" id="boost" hidden>BOOST</button><button class="btn red" id="fire" hidden>REPULSOR</button><button class="btn" id="lock" hidden>LOCK</button><button class="btn" id="view">HELMET</button>
+  <button class="btn" id="run"><span class="glyph">⌁</span><span class="btnLabel">RUN</span></button><button class="btn" id="attack" aria-label="Punch" hidden><span class="glyph">✊</span><span class="btnLabel">PUNCH</span></button><button class="btn" id="kick" aria-label="Kick" hidden><span class="glyph">➤</span><span class="btnLabel">KICK</span></button><button class="btn gold" id="fly"><span class="glyph">✧</span><span class="btnLabel">FLY</span></button>
+  <button class="btn" id="up" hidden><span class="glyph">↑</span><span class="btnLabel">UP</span></button><button class="btn" id="down" hidden><span class="glyph">↓</span><span class="btnLabel">DOWN</span></button>
+  <button class="btn gold" id="land" hidden><span class="glyph">⌄</span><span class="btnLabel">LAND</span></button><button class="btn" id="hover" hidden><span class="glyph">◎</span><span class="btnLabel">HOVER</span></button>
+  <button class="btn gold" id="boost" hidden><span class="glyph">»</span><span class="btnLabel">BOOST</span></button><button class="btn red" id="fire" hidden><span class="glyph">◉</span><span class="btnLabel">REPULSOR</span></button><button class="btn" id="lock" hidden><span class="glyph">⌖</span><span class="btnLabel">LOCK</span></button><button class="btn" id="view"><span class="glyph">◈</span><span class="btnLabel">HELMET</span></button>
  </div></div>
 </div>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
