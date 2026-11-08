@@ -1148,7 +1148,8 @@ async function boot() {
   const cam = new ThirdPersonCamera(sm.camera, city);
   const rep = new RepulsorSystem(sm.scene);
   const rings = new RingCourse(sm.scene, city);
-  const wind = new WindLines(sm.scene);\n  const traffic = new TrafficSystem(sm.scene, perf);
+  const wind = new WindLines(sm.scene);
+  const traffic = new TrafficSystem(sm.scene, perf);
   cam.attach(sm.renderer.domElement);
   sm.scene.add(hero.root);
   perf.onTierChange = t => { sm.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio)); city.setRadii(t.nearRadius, t.farRadius); hud.toast('QUALITY: ' + t.name.toUpperCase()); };
