@@ -259,7 +259,8 @@ class CityManager {
         M.compose(V.set(px, 0, pz), Q.setFromAxisAngle(UP, rot), S.set(s, sy, s));
         M.multiply(new THREE.Matrix4().makeTranslation(-t.cx, -t.min.y, -t.cz));
         const height = t.h * sy;
-        this.placements.push({ ti, px, pz, hx, hz, height, matrix: M.clone(), tint: 0.55 + r() * 0.3 });
+        const sh = 0.7 + r() * 0.45, wa = 0.9 + r() * 0.2;
+        this.placements.push({ ti, px, pz, hx, hz, height, matrix: M.clone(), tint: 0.55 + r() * 0.3, color: new THREE.Color().setRGB(sh * wa, sh, sh / wa) });
         this.colliders.push({ minX: px - hx, maxX: px + hx, minZ: pz - hz, maxZ: pz + hz, h: height });
       }
     }
@@ -373,7 +374,7 @@ class CityManager {
       const d = Math.hypot(p.px - pos.x, p.pz - pos.z);
       if (d < this.near) {
         const t = this.templates[p.ti], k = counts[p.ti]++;
-        for (const im of t.instanced) im.setMatrixAt(k, p.matrix);
+        for (const im of t.instanced) { im.setMatrixAt(k, p.matrix); im.setColorAt(k, p.color); }
       } else if (d < this.far) {
         M.compose(V.set(p.px, 0, p.pz), Q.identity(), S.set(p.hx * 2, p.height, p.hz * 2));
         this.farMesh.setMatrixAt(far, M); this.farMesh.setColorAt(far, C.setHSL(0.07, 0.25, p.tint * 0.6)); far++;
@@ -464,6 +465,7 @@ class IronMan {
     const holder = new THREE.Group(); holder.rotation.y = Math.PI; holder.add(obj);
     this.tilt.add(holder); this.model = obj;
 
+    await this._loadAnimations(obj);
     progress('APPLYING SUIT MATERIALS', 60);
     obj.traverse(o => {
       if (o.isBone) { const n = key(o.name); for (const [id, re] of [['lHand', /lefthand$/], ['rHand', /righthand$/], ['lFoot', /leftfoot$/], ['rFoot', /rightfoot$/], ['chest', /spine2$/], ['head', /head$/]]) if (re.test(n)) this.bones[id] = o; }
@@ -517,9 +519,34 @@ class IronMan {
     for (const s of [-1, 1]) { add(new THREE.CapsuleGeometry(.13, .65, 4, 8), red, [s * .53, 1.15, 0]); add(new THREE.CapsuleGeometry(.12, .62, 4, 8), red, [s * .22, .4, 0]); }
   }
 
+  // Mixamo-style clips share bone names with Og.fbx, so they drive the rig directly.
+  async _loadAnimations(obj) {
+    this.mixer = new THREE.AnimationMixer(obj); this.actions = {}; this.current = null;
+    const files = { idle: 'Idle_relaxed.fbx', walk: 'Walk_forwards.fbx', run: 'Run_sprint.fbx', fly: 'Jump_in_the_air.fbx' };
+    await Promise.all(Object.entries(files).map(async ([k, f]) => {
+      try {
+        const o = await this.assets.loadFBX(f);
+        const clip = o.animations && o.animations[0];
+        if (clip) { const a = this.mixer.clipAction(clip); a.setLoop(THREE.LoopRepeat); a.play(); a.setEffectiveWeight(0); this.actions[k] = a; }
+      } catch (e) { /* missing clip: that state keeps the static pose */ }
+    }));
+    this.play('idle');
+  }
+  play(name) {
+    const next = this.actions && this.actions[name];
+    if (!next || next === this.current) return;
+    next.reset().setEffectiveWeight(1).fadeIn(0.25);
+    if (this.current) this.current.fadeOut(0.25);
+    this.current = next;
+  }
+
   // Thruster glow follows the real hand/foot bones; intensity = flight state.
-  update(dt, flightAmount) {
+  update(dt, flightAmount, speed = 0) {
     this.flying += (flightAmount - this.flying) * Math.min(1, dt * 6);
+    if (this.mixer) {
+      this.mixer.update(dt);
+      this.play(this.flying > 0.5 ? 'fly' : speed > 7 ? 'run' : speed > 0.6 ? 'walk' : 'idle');
+    }
     const p = new THREE.Vector3();
     this.root.updateMatrixWorld(true);
     for (const s of this.glows) {
@@ -736,7 +763,7 @@ async function boot() {
   perf.onTierChange = t => { sm.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio)); city.setRadii(t.nearRadius, t.farRadius); hud.toast('QUALITY: ' + t.name.toUpperCase()); };
 
   hud.setLoading('READING ASSET ARCHIVES', 2);
-  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
+  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
   // Hero first (playable immediately), city second; either failure is reported and never blocks the loop.
   let heroOk = true, cityOk = true;
   await Promise.all([
@@ -769,7 +796,7 @@ async function boot() {
     if (move.hitLimit) hud.toast('EDGE OF THE MAP');
     hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading;
     hero.tilt.rotation.set(move.pitch, 0, move.bank);
-    hero.update(dt, move.flying ? 1 : 0);
+    hero.update(dt, move.flying ? 1 : 0, move.speed);
     city.update(move.pos);
     rep.update(dt, inp.boost); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
     cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed });
