@@ -971,6 +971,7 @@ class RepulsorSystem {
     if (!regenBlocked) this.energy = Math.min(100, this.energy + dt * 6);
     for (let i = this.shots.length - 1; i >= 0; i--) {
       const s = this.shots[i]; s.m.position.addScaledVector(s.v, dt);
+      if (mission && mission.hit(s.m.position, hud)) s.life = 0;
       if ((s.life -= dt) <= 0) { this.scene.remove(s.m); this.pool.push(s.m); this.shots.splice(i, 1); }
     }
   }
@@ -1270,6 +1271,7 @@ async function boot() {
   hud.on('fly', () => { if (move.takeoff()) { hud.setFlightUI(true); cam.bump(0.05); cine.trigger('TAKEOFF', 1.7); hud.toast('TAKEOFF — THRUSTERS ENGAGED'); } });
   hud.on('land', () => { if (move.land()) { cine.trigger('LANDING', 2.0); hud.toast('LANDING'); } });
   hud.on('cine', () => { const on=cine.toggle(); hud.toast(on?'CINEMATIC CAMERA':'MANUAL CAMERA'); });
+  hud.on('cine', () => { const on=cine.toggle(); hud.toast(on?'CINEMATIC CAMERA':'MANUAL CAMERA'); });
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   hud.on('fire', () => {
     if (!move.flying) return;
@@ -1301,5 +1303,4 @@ async function boot() {
     sm.render(move.pos, { speed: move.speed, boost: inp.boost });
   })();
 }
-boot().catch(e => { console.error(e); hud.setLoading('STARTUP ERROR: ' + (e.message || e), 100); hud.logError(String(e.stack || e).split('
-')[0]); });
+boot().catch(e => { console.error(e); hud.setLoading('STARTUP ERROR: ' + (e.message || e), 100); hud.logError(String(e.stack || e).split('\\n')[0]); });
