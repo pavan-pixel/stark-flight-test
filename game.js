@@ -1224,7 +1224,8 @@ class StoryMission {
  hit(point,hud){let found=null,dmin=5.5;for(const t of this.targets)if(t.alive){const d=t.root.position.distanceTo(point);if(d<dmin){found=t;dmin=d;}}if(!found)return false;found.alive=false;found.root.visible=false;const n=this.targets.filter(t=>t.alive).length;if(hud)hud.toast(n?'HOSTILE DRONE DISABLED · '+(3-n)+'/3':'MISSION COMPLETE — SECTOR SECURE');if(!n)this.complete=true;return true;}
  update(dt,hud){for(const t of this.targets)if(t.alive){t.phase+=dt;t.root.position.y+=Math.sin(t.phase*1.5)*dt*1.2;t.root.rotation.y+=dt*.5;}const el=document.getElementById('mission');if(el)el.textContent=this.complete?'OBJECTIVE COMPLETE · SECTOR SECURE':'PROTOCOL 01 · NEUTRALIZE HOSTILE DRONES · '+(3-this.targets.filter(t=>t.alive).length)+'/3';}
 }
-\n// ===== main.js =====
+
+// ===== main.js =====
 
 const hud = new HUD();
 const failures = [];
@@ -1238,7 +1239,9 @@ async function boot() {
   const cam = new ThirdPersonCamera(sm.camera, city);
   const rep = new RepulsorSystem(sm.scene);
   const rings = new RingCourse(sm.scene, city);
-  const wind = new WindLines(sm.scene);\n  const cine = new CinematicDirector(sm.camera, hero);\n  const mission = new StoryMission(sm.scene);
+  const wind = new WindLines(sm.scene);
+  const cine = new CinematicDirector(sm.camera, hero);
+  const mission = new StoryMission(sm.scene);
   const traffic = new TrafficSystem(sm.scene, perf);
   cam.attach(sm.renderer.domElement);
   sm.scene.add(hero.root);
@@ -1265,7 +1268,8 @@ async function boot() {
   hud.toast(heroOk && cityOk ? "MARK 85 ONLINE" : 'DEGRADED MODE — SEE ERRORS');
 
   hud.on('fly', () => { if (move.takeoff()) { hud.setFlightUI(true); cam.bump(0.05); cine.trigger('TAKEOFF', 1.7); hud.toast('TAKEOFF — THRUSTERS ENGAGED'); } });
-  hud.on('land', () => { if (move.land()) { cine.trigger('LANDING', 2.0); hud.toast('LANDING'); } });\n  hud.on('cine', () => { const on=cine.toggle(); hud.toast(on?'CINEMATIC CAMERA':'MANUAL CAMERA'); });
+  hud.on('land', () => { if (move.land()) { cine.trigger('LANDING', 2.0); hud.toast('LANDING'); } });
+  hud.on('cine', () => { const on=cine.toggle(); hud.toast(on?'CINEMATIC CAMERA':'MANUAL CAMERA'); });
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   hud.on('fire', () => {
     if (!move.flying) return;
@@ -1282,7 +1286,8 @@ async function boot() {
     const inp = { x: hud.steer.x, y: hud.steer.y, run: hud.input.run, boost: hud.input.boost && move.mode === MODE.FLY && rep.energy > 1, hover: hud.input.hover, up: hud.input.up, down: hud.input.down };
     move.update(dt, inp, cam.yaw, city);
     if (move.landed) { move.landed = false; hud.setFlightUI(false); hud.toast('LANDED — WALK MODE'); cam.bump(0.06); }
-    if (move.hitLimit) hud.toast('EDGE OF THE MAP');\n    if (inp.boost && !cine.boostWasOn) cine.trigger('BOOST',1.25); cine.boostWasOn=inp.boost;
+    if (move.hitLimit) hud.toast('EDGE OF THE MAP');
+    if (inp.boost && !cine.boostWasOn) cine.trigger('BOOST',1.25); cine.boostWasOn=inp.boost;
     rings.update(dt, move.pos, rep, hud, move.flying);
     wind.update(dt, move.pos, move.vel, move.flying && move.speed > 20, sm.camera.position);
     hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading;
@@ -1296,4 +1301,5 @@ async function boot() {
     sm.render(move.pos, { speed: move.speed, boost: inp.boost });
   })();
 }
-boot().catch(e => { console.error(e); hud.setLoading('STARTUP ERROR: ' + (e.message || e), 100); hud.logError(String(e.stack || e).split('\n')[0]); });
+boot().catch(e => { console.error(e); hud.setLoading('STARTUP ERROR: ' + (e.message || e), 100); hud.logError(String(e.stack || e).split('
+')[0]); });
