@@ -4,6 +4,12 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import JSZip from 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 
 // ===== core/PerformanceManager.js =====
 // Detects device capability, exposes a quality tier, and steps DOWN if FPS stays low.
@@ -66,7 +72,7 @@ class AssetManager {
     let i = 0;
     await Promise.all(names.map(async n => {
       try {
-        const r = await fetch('./' + n + '?v=m15'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
+        const r = await fetch('./' + n + '?v=m18'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
         const z = await JSZip.loadAsync(await r.arrayBuffer());
         for (const f of Object.values(z.files)) if (!f.dir) this.entries.set(lc(base(f.name)), f);
         this._ok(n);
@@ -104,6 +110,10 @@ class AssetManager {
       const f = this.entries.get(lc(name)); if (!f) throw Error('not found in any ZIP');
       if (/\.glb$/i.test(name)) { // binary GLB: textures are embedded, no sidecar files needed
         const buf = await f.async('arraybuffer');
+        // Kenney GLBs point at an external Textures/colormap.png: read the JSON chunk and fetch those images first.
+        const jlen = new DataView(buf).getUint32(12, true);
+        const j = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 20, jlen)));
+        await Promise.all((j.images || []).filter(x => x.uri && !x.uri.startsWith('data:')).map(x => this.url(base(x.uri))));
         const g = await new Promise((res, rej) => this.gltf.parse(buf, '', res, rej));
         this.shrinkMaterials(g.scene); this._ok(name); return g;
       }
@@ -136,7 +146,7 @@ class AssetManager {
 
 // ===== core/SceneManager.js =====
 
-const SUN_DIR = new THREE.Vector3(-0.5, 0.7, 0.45).normalize();
+const SUN_DIR = new THREE.Vector3(0.4, 0.3, -0.87).normalize();
 function glowTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d');
   const gr = x.createRadialGradient(128, 128, 0, 128, 128, 128);
@@ -146,6 +156,28 @@ function glowTexture() {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 const FOG_COLOR = 0xcdd9e0;
+
+// Speed motion blur: radial smear from the screen centre, strength driven by flight speed.
+const MotionBlurShader = {
+  uniforms: { tDiffuse: { value: null }, strength: { value: 0 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: 'uniform sampler2D tDiffuse; uniform float strength; varying vec2 vUv; void main(){ vec2 d = (vUv - 0.5) * strength; vec4 c = texture2D(tDiffuse, vUv); float w = 1.0; for (int i = 1; i <= 6; i++) { float f = float(i) / 6.0; c += texture2D(tDiffuse, vUv - d * f); w += 1.0; } gl_FragColor = c / w; }',
+};
+// Colour grade: a little more contrast and saturation, warm highlights, cool shadows.
+const GradeShader = {
+  uniforms: { tDiffuse: { value: null }, contrast: { value: 1.08 }, sat: { value: 1.12 }, warm: { value: 0.035 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: 'uniform sampler2D tDiffuse; uniform float contrast; uniform float sat; uniform float warm; varying vec2 vUv; void main(){ vec4 c = texture2D(tDiffuse, vUv); float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722)); vec3 s = mix(vec3(l), c.rgb, sat); s = (s - 0.5) * contrast + 0.5; s.r += warm; s.b -= warm * 0.6; gl_FragColor = vec4(clamp(s, 0.0, 1.0), c.a); }',
+};
+// Soft round or ring-shaped flare sprites for the lens flare.
+function flareTexture(kind) {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+  const g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  if (kind === 0) { g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.5, 'rgba(255,255,255,0.25)'); g.addColorStop(1, 'rgba(255,255,255,0)'); }
+  else { g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.7, 'rgba(255,255,255,0)'); g.addColorStop(0.85, 'rgba(255,255,255,0.9)'); g.addColorStop(1, 'rgba(255,255,255,0)'); }
+  x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
 
 class SceneManager {
   constructor(perf) {
@@ -196,21 +228,50 @@ class SceneManager {
       this.sun.shadow.bias = -0.0008; this.sun.shadow.normalBias = 0.6;
       this.scene.add(this.sun.target);
     }
+    // Post-processing: bloom + grade + speed blur on medium/high; low tier renders directly.
+    this.post = perf.tier.name !== 'low';
+    if (this.post) {
+      this.composer = new EffectComposer(this.renderer);
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.4, 0.5, 0.88);
+      this.composer.addPass(this.bloom);
+      this.grade = new ShaderPass(GradeShader); this.composer.addPass(this.grade);
+      this.blur = new ShaderPass(MotionBlurShader); this.composer.addPass(this.blur);
+      this.composer.addPass(new OutputPass());
+      this._pr = this.renderer.getPixelRatio();
+      // Lens flare: ghost rings and glows along the sun line.
+      this.lensflare = new Lensflare();
+      this.lensflare.addElement(new LensflareElement(flareTexture(0), 700, 0, new THREE.Color(1, 0.9, 0.7)));
+      this.lensflare.addElement(new LensflareElement(flareTexture(1), 160, 0.35, new THREE.Color(1, 0.8, 0.5)));
+      this.lensflare.addElement(new LensflareElement(flareTexture(1), 320, 0.6, new THREE.Color(0.6, 0.8, 1)));
+      this.lensflare.addElement(new LensflareElement(flareTexture(0), 90, 0.9, new THREE.Color(1, 0.7, 0.4)));
+      this.scene.add(this.lensflare);
+    }
     addEventListener('resize', () => this.resize());
     perf.onTierChange = t => this.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio));
   }
   resize() {
     this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix();
     this.renderer.setSize(innerWidth, innerHeight);
+    if (this.composer) this.composer.setSize(innerWidth, innerHeight);
   }
-  render(hero) {
+  render(hero, motion = { speed: 0, boost: false }) {
     this.sky.position.copy(this.camera.position);
-    this.sunFlare.position.copy(this.camera.position).addScaledVector(SUN_DIR, 2800);
+    const sunPos = this.camera.position.clone().addScaledVector(SUN_DIR, 2800);
+    this.sunFlare.position.copy(sunPos);
+    if (this.lensflare) this.lensflare.position.copy(sunPos);
     if (this.shadows && hero) {
       this.sun.target.position.set(hero.x, 0, hero.z);
       this.sun.position.copy(this.sun.target.position).addScaledVector(SUN_DIR, 300);
     }
-    this.renderer.render(this.scene, this.camera);
+    if (this.composer) {
+      const pr = this.renderer.getPixelRatio();
+      if (pr !== this._pr) { this._pr = pr; this.composer.setPixelRatio(pr); this.composer.setSize(innerWidth, innerHeight); }
+      this.blur.uniforms.strength.value = Math.min(0.06, Math.max(0, (motion.speed - 25) * 0.0012)) + (motion.boost ? 0.02 : 0);
+      this.composer.render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
   }
 }
 
@@ -747,10 +808,10 @@ class ThirdPersonCamera {
   bump(amount) { this.shake = Math.max(this.shake, amount); }
 
   update(dt, target, { flying, boost, speed }) {
-    const want = ((flying ? 26 + Math.min(6, speed * 0.05) : 8)) * this.userDist * (boost ? 1.2 : 1);
+    const want = ((flying ? 42 + Math.min(10, speed * 0.07) : 8)) * this.userDist * (boost ? 1.2 : 1);
     this.curDist = THREE.MathUtils.damp(this.curDist, want, 3, dt);
     const focus = this._tmp.set(target.x, target.y + (flying ? 1.1 : 1.35), target.z);
-    const off = this._dir.set(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch) + (flying ? 0.5 : 0.18), Math.cos(this.yaw) * Math.cos(this.pitch)).normalize();
+    const off = this._dir.set(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch) + (flying ? 0.32 : 0.18), Math.cos(this.yaw) * Math.cos(this.pitch)).normalize();
     // Collision: pull the camera in if a building is between player and camera.
     const hit = this.city.raycast(focus, off, this.curDist + 0.5);
     const d = Math.max(1.2, Math.min(this.curDist, hit - 0.6));
@@ -761,7 +822,7 @@ class ThirdPersonCamera {
     this.camera.position.copy(this.pos);
     if (this.shake > 0.001) { this.camera.position.x += (Math.random() - .5) * this.shake; this.camera.position.y += (Math.random() - .5) * this.shake; this.shake *= Math.pow(0.02, dt); }
     this.camera.lookAt(focus.x, focus.y + 0.1, focus.z);
-    const fov = 70 + (boost ? 18 : 0) + Math.min(16, speed * 0.14);
+    const fov = 78 + (boost ? 18 : 0) + Math.min(16, speed * 0.14);
     this.camera.fov = THREE.MathUtils.damp(this.camera.fov, fov, 4, dt); this.camera.updateProjectionMatrix();
   }
 }
@@ -884,36 +945,50 @@ class RingCourse {
 }
 
 // ===== effects/WindLines.js =====
-// M4: speed streaks that rush past while flying fast. Plain line geometry, no textures.
+// Speed streaks: soft additive strips that face the camera and stretch along the motion (no hard lines).
+function streakTexture() {
+  const c = document.createElement('canvas'); c.width = 32; c.height = 256; const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(230,248,255,1)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 32, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
 class WindLines {
-  constructor(scene, n = 80) {
-    this.n = n; this.off = []; this.buf = new Float32Array(n * 6); this.seeded = false;
-    for (let i = 0; i < n; i++) this.off.push(new THREE.Vector3());
-    this.geo = new THREE.BufferGeometry(); this.geo.setAttribute('position', new THREE.BufferAttribute(this.buf, 3));
-    this.mat = new THREE.LineBasicMaterial({ color: 0xdffbff, transparent: true, opacity: 0.6, depthWrite: false });
-    this.lines = new THREE.LineSegments(this.geo, this.mat); this.lines.frustumCulled = false; this.lines.visible = false;
-    scene.add(this.lines);
+  constructor(scene, n = 90) {
+    this.n = n; this.seeded = false;
+    this.off = []; this.w = []; this.l = [];
+    for (let i = 0; i < n; i++) { this.off.push(new THREE.Vector3()); this.w.push(0.12); this.l.push(6); }
+    this.mat = new THREE.MeshBasicMaterial({ map: streakTexture(), color: 0xcfeeff, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    this.mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), this.mat, n);
+    this.mesh.frustumCulled = false; this.mesh.visible = false; this.mesh.renderOrder = 8;
+    scene.add(this.mesh);
+    this._m = new THREE.Matrix4(); this._P = new THREE.Vector3(); this._X = new THREE.Vector3(); this._Y = new THREE.Vector3(); this._Z = new THREE.Vector3(); this._C = new THREE.Vector3();
   }
-  // Spawn in front of the hero (along its motion) so streaks come at the camera and flash past.
-  _spawn(v, fx, fz) {
-    const ahead = 5 + Math.random() * 8, side = (Math.random() - 0.5) * 12;
-    v.set(fx * ahead - fz * side, (Math.random() - 0.3) * 8, fz * ahead + fx * side);
+  _spawn(i, fx, fz) {
+    const ahead = 4 + Math.random() * 36, side = (Math.random() - 0.5) * 40, up = (Math.random() - 0.4) * 24;
+    this.off[i].set(fx * ahead - fz * side, up, fz * ahead + fx * side);
+    this.w[i] = 0.12 + Math.random() * 0.25; this.l[i] = 4 + Math.random() * 10;
   }
-  update(dt, pos, vel, active) {
-    this.lines.visible = active;
+  update(dt, pos, vel, active, camPos) {
+    this.mesh.visible = active;
     if (!active) return;
-    const sp = Math.hypot(vel.x, vel.z), len = Math.min(14, 3 + sp * 0.2), dl = sp || 1;
-    const fx = vel.x / dl, fz = vel.z / dl;
-    if (!this.seeded) { this.off.forEach(v => this._spawn(v, fx, fz)); this.seeded = true; }
+    const sp = Math.hypot(vel.x, vel.z), dl = sp || 1, fx = vel.x / dl, fz = vel.z / dl;
+    if (!this.seeded) { for (let i = 0; i < this.n; i++) this._spawn(i, fx, fz); this.seeded = true; }
+    const stretch = 0.5 + Math.min(1, sp / 60);
+    this._Y.set(fx, 0, fz);
     for (let i = 0; i < this.n; i++) {
       const v = this.off[i];
-      v.x -= vel.x * dt; v.z -= vel.z * dt;          // stationary in the world, so the hero rushes past them
-      if (v.length() > 14) this._spawn(v, fx, fz);
-      const sx = pos.x + v.x, sy = pos.y + 1.2 + v.y, sz = pos.z + v.z, k = i * 6;
-      this.buf[k] = sx; this.buf[k + 1] = sy; this.buf[k + 2] = sz;
-      this.buf[k + 3] = sx - fx * len; this.buf[k + 4] = sy; this.buf[k + 5] = sz - fz * len;
+      v.x -= vel.x * dt; v.z -= vel.z * dt;                 // stationary in the world: the hero rushes past them
+      if (v.length() > 45) this._spawn(i, fx, fz);
+      this._P.set(pos.x + v.x, pos.y + 1.2 + v.y, pos.z + v.z);
+      this._C.copy(camPos).sub(this._P).normalize();
+      this._X.crossVectors(this._Y, this._C); if (this._X.lengthSq() < 1e-6) this._X.set(1, 0, 0); this._X.normalize();
+      this._Z.crossVectors(this._X, this._Y).normalize();   // faces the camera
+      const xs = this._X.clone().multiplyScalar(this.w[i]), ys = this._Y.clone().multiplyScalar(this.l[i] * stretch);
+      this._m.makeBasis(xs, ys, this._Z); this._m.setPosition(this._P);
+      this.mesh.setMatrixAt(i, this._m);
     }
-    this.geo.attributes.position.needsUpdate = true;
+    this.mesh.instanceMatrix.needsUpdate = true;
   }
 }
 
@@ -973,7 +1048,7 @@ async function boot() {
     if (move.landed) { move.landed = false; hud.setFlightUI(false); hud.toast('LANDED — WALK MODE'); cam.bump(0.06); }
     if (move.hitLimit) hud.toast('EDGE OF THE MAP');
     rings.update(dt, move.pos, rep, hud, move.flying);
-    wind.update(dt, move.pos, move.vel, move.flying && move.speed > 20);
+    wind.update(dt, move.pos, move.vel, move.flying && move.speed > 20, sm.camera.position);
     hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading;
     hero.tilt.rotation.set(move.pitch, 0, move.bank);
     hero.update(dt, move.flying ? 1 : 0, move.speed, inp.boost);
@@ -981,7 +1056,7 @@ async function boot() {
     rep.update(dt, inp.boost); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
     cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed });
     hud.readout(move.mode, move.pos.y, move.speed * 3.6, rep.energy);
-    sm.render(move.pos);
+    sm.render(move.pos, { speed: move.speed, boost: inp.boost });
   })();
 }
 boot().catch(e => { console.error(e); hud.setLoading('STARTUP ERROR: ' + (e.message || e), 100); hud.logError(String(e.stack || e).split('\n')[0]); });
