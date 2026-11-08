@@ -948,6 +948,153 @@ class ThirdPersonCamera {
 }
 
 
+// ===== camera/CinematicDirector.js =====
+// Scripted, interruptible camera shots. Gameplay input remains live during shots.
+class CinematicDirector {
+  constructor(camera) { this.camera = camera; this.enabled = true; this.shot = null; this.cooldowns = new Map(); }
+  setEnabled(v) { this.enabled = !!v; if (!v) this.shot = null; }
+  trigger(name, hero, move, duration = 1.8) {
+    if (!this.enabled) return;
+    const now = performance.now(), last = this.cooldowns.get(name) || 0;
+    if (now - last < 1400) return;
+    this.cooldowns.set(name, now);
+    const p = hero.root.position, yaw = move.heading || 0;
+    const f = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+    const right = new THREE.Vector3(-f.z, 0, f.x);
+    let from, to, lookFrom, lookTo;
+    if (name === 'intro') {
+      from = p.clone().add(new THREE.Vector3(0.7, 1.7, 3.1));
+      to = p.clone().add(new THREE.Vector3(0, 4.4, 12.5));
+      lookFrom = p.clone().add(new THREE.Vector3(0, 1.55, 0));
+      lookTo = p.clone().add(new THREE.Vector3(0, 1.0, 0));
+      duration = 4.8;
+    } else if (name === 'takeoff') {
+      from = p.clone().add(new THREE.Vector3(0, 1.1, 3.4));
+      to = p.clone().add(new THREE.Vector3(0, 5.5, 13));
+      lookFrom = p.clone().add(new THREE.Vector3(0, 1.5, 0)); lookTo = p.clone().add(new THREE.Vector3(0, 1.3, 0));
+      duration = 2.3;
+    } else if (name === 'boost') {
+      from = p.clone().addScaledVector(f, 2.5).add(new THREE.Vector3(0, 1.5, 0));
+      to = p.clone().addScaledVector(f, -18).add(new THREE.Vector3(0, 7, 0));
+      lookFrom = p.clone().add(new THREE.Vector3(0, 1.3, 0)); lookTo = lookFrom.clone();
+      duration = 1.25;
+    } else if (name === 'fire') {
+      from = p.clone().addScaledVector(right, 4.2).addScaledVector(f, 1.2).add(new THREE.Vector3(0, 1.8, 0));
+      to = p.clone().addScaledVector(right, 6.5).addScaledVector(f, 4).add(new THREE.Vector3(0, 2.1, 0));
+      lookFrom = p.clone().add(new THREE.Vector3(0, 1.2, 0)); lookTo = lookFrom.clone();
+      duration = 0.9;
+    } else if (name === 'land') {
+      from = p.clone().add(new THREE.Vector3(0, 1.0, 7.5));
+      to = p.clone().add(new THREE.Vector3(0, 1.7, 10));
+      lookFrom = p.clone().add(new THREE.Vector3(0, 1.0, 0)); lookTo = lookFrom.clone();
+      duration = 1.8;
+    } else return;
+    this.shot = { name, from, to, lookFrom, lookTo, elapsed: 0, duration };
+  }
+  update(dt, hero) {
+    if (!this.enabled || !this.shot) return;
+    const s = this.shot; s.elapsed += dt;
+    const t = THREE.MathUtils.clamp(s.elapsed / s.duration, 0, 1);
+    const e = t * t * (3 - 2 * t);
+    const drift = hero.root.position.clone().sub(s._origin || (s._origin = hero.root.position.clone()));
+    this.camera.position.lerpVectors(s.from.clone().add(drift), s.to.clone().add(drift), e);
+    const target = new THREE.Vector3().lerpVectors(s.lookFrom.clone().add(drift), s.lookTo.clone().add(drift), e);
+    this.camera.lookAt(target);
+    if (t >= 1) this.shot = null;
+  }
+}
+
+
+// ===== gameplay/StoryMission.js =====
+class StoryMission {
+  constructor(scene, city, hud) {
+    this.scene = scene; this.city = city; this.hud = hud; this.stage = 0; this.checkpoint = 0;
+    this.beacons = []; this.drones = []; this.complete = false;
+    this.ringGeo = new THREE.TorusGeometry(5, 0.22, 8, 40);
+    this.ringMat = new THREE.MeshBasicMaterial({ color: 0x70eaff, transparent: true, opacity: 0.92, depthWrite: false });
+    this.droneGeo = new THREE.IcosahedronGeometry(1.45, 1);
+    this.droneMat = new THREE.MeshStandardMaterial({ color: 0x273d52, metalness: 0.82, roughness: 0.24, emissive: 0x092d43, emissiveIntensity: 1.2 });
+    this.coreMat = new THREE.MeshBasicMaterial({ color: 0x8ff5ff });
+    this._set('OPERATION: IRON AWAKENING', 'Press FLY to ignite the Mark 85 thrusters');
+  }
+  _set(title, detail) {
+    const a = document.getElementById('missionTitle'), b = document.getElementById('missionDetail');
+    if (a) a.textContent = title; if (b) b.textContent = detail;
+  }
+  startFlight() {
+    if (this.stage !== 0) return;
+    this.stage = 1; this.checkpoint = 0;
+    const route = [[0, 88, -145], [92, 108, -260], [-40, 82, -390]];
+    route.forEach((v, i) => {
+      const m = new THREE.Mesh(this.ringGeo, this.ringMat);
+      m.position.set(v[0], v[1], v[2]); m.rotation.y = i * 0.6;
+      this.scene.add(m); this.beacons.push(m);
+    });
+    this._set('OBJECTIVE 01 // FLIGHT CALIBRATION', 'Fly through the three cyan navigation beacons');
+  }
+  _spawnDrones() {
+    const pts = [[-110, 92, -430], [15, 116, -475], [135, 90, -425]];
+    pts.forEach((p, i) => {
+      const g = new THREE.Group();
+      const core = new THREE.Mesh(this.droneGeo, this.droneMat);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.48, 12, 8), this.coreMat);
+      g.add(core, eye); eye.position.set(0, 0, -1.05);
+      const wing = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.18, 0.65), this.droneMat);
+      g.add(wing); wing.rotation.y = 0.25;
+      g.position.set(...p); this.scene.add(g);
+      this.drones.push({ group: g, hp: 2, alive: true, phase: i * 2 });
+    });
+  }
+  update(dt, move, rep, camDirector, hero) {
+    if (this.complete) return;
+    if (this.stage === 0) return;
+    if (this.stage === 1) {
+      const b = this.beacons[this.checkpoint];
+      if (b) {
+        b.rotation.z += dt * 0.8; b.rotation.y += dt * 0.35;
+        if (move.pos.distanceTo(b.position) < 9) {
+          b.visible = false; this.checkpoint++;
+          this.hud.toast('NAV BEACON ' + this.checkpoint + ' / 3');
+          if (this.checkpoint >= 3) {
+            this.stage = 2; this._spawnDrones();
+            this._set('OBJECTIVE 02 // THREAT DETECTED', 'Destroy all three hostile drones with FIRE');
+          } else this._set('OBJECTIVE 01 // FLIGHT CALIBRATION', 'Navigation beacon ' + (this.checkpoint + 1) + ' of 3');
+        }
+      }
+    } else if (this.stage === 2) {
+      let alive = 0;
+      for (const d of this.drones) if (d.alive) {
+        alive++; d.phase += dt; d.group.position.y += Math.sin(d.phase * 1.7) * dt * 1.4;
+        d.group.rotation.y += dt * 0.65;
+        const to = move.pos.distanceTo(d.group.position);
+        if (to < 7 && rep.shots.some(s => s.m.position.distanceTo(d.group.position) < 3.2)) { d.hp = 0; }
+      }
+      if (alive === 0 || this.drones.every(d => !d.alive)) {
+        this.stage = 3; this._set('OBJECTIVE 03 // RETURN TO BASE', 'Return to the marked origin and press LAND');
+      }
+    } else if (this.stage === 3) {
+      if (move.mode === MODE.WALK && Math.hypot(move.pos.x, move.pos.z) < 28) {
+        this.stage = 4; this.complete = true;
+        this._set('MISSION COMPLETE', 'IRON AWAKENING // MARK 85 SYSTEMS ONLINE');
+        this.hud.toast('MISSION COMPLETE');
+        camDirector.trigger('intro', hero, move, 3.2);
+      }
+    }
+    for (const d of this.drones) if (d.alive && d.hp <= 0) {
+      d.alive = false; d.group.visible = false; this.hud.toast('HOSTILE DRONE DESTROYED');
+    }
+  }
+  damageDrone(position) {
+    let best = null, dist = 5;
+    for (const d of this.drones) if (d.alive) {
+      const n = d.group.position.distanceTo(position);
+      if (n < dist) { dist = n; best = d; }
+    }
+    if (best) best.hp--;
+  }
+}
+
+
 // ===== combat/RepulsorSystem.js =====
 
 // Milestone-1 port of the original FIRE button (pooled: no geometry/material created per shot).
@@ -987,6 +1134,8 @@ class HUD {
     this.input = { run: false, boost: false, hover: false, up: 0, down: 0 };
     this.handlers = {};
     this._joystick(); this._buttons();
+    const cameraButton = $('cameraMode');
+    if (cameraButton) cameraButton.addEventListener('click', () => { this.handlers.camera && this.handlers.camera(); });
   }
   on(name, fn) { this.handlers[name] = fn; }
   setLoading(text, pct) { $('loadtext').textContent = text; if (pct != null) $('loadbar').style.width = pct + '%'; }
@@ -1024,6 +1173,7 @@ class HUD {
     $('fly').addEventListener('click', () => this.handlers.fly && this.handlers.fly());
     $('land').addEventListener('click', () => this.handlers.land && this.handlers.land());
     $('fire').addEventListener('click', () => this.handlers.fire && this.handlers.fire());
+    $('cameraMode') && $('cameraMode').addEventListener('click', () => this.handlers.camera && this.handlers.camera());
     this._hold('boost', 'boost', true); this._hold('up', 'up', 1); this._hold('down', 'down', 1);
   }
 }
@@ -1204,6 +1354,8 @@ async function boot() {
   const rings = new RingCourse(sm.scene, city);
   const wind = new WindLines(sm.scene);
   const traffic = new TrafficSystem(sm.scene, perf);
+  const cinematic = new CinematicDirector(sm.camera);
+  const story = new StoryMission(sm.scene, city, hud);
   cam.attach(sm.renderer.domElement);
   sm.scene.add(hero.root);
   perf.onTierChange = t => { sm.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio)); city.setRadii(t.nearRadius, t.farRadius); hud.toast('QUALITY: ' + t.name.toUpperCase()); };
@@ -1227,15 +1379,22 @@ async function boot() {
   move.mode = MODE.WALK;
   hud.setFlightUI(false);
   hud.toast(heroOk && cityOk ? "MARK 85 ONLINE" : 'DEGRADED MODE — SEE ERRORS');
+  cinematic.trigger('intro', hero, move, 4.8);
 
-  hud.on('fly', () => { if (move.takeoff()) { hud.setFlightUI(true); cam.bump(0.05); hud.toast('TAKEOFF — THRUSTERS ENGAGED'); } });
-  hud.on('land', () => { if (move.land()) hud.toast('LANDING'); });
+  hud.on('camera', () => {
+    cinematic.setEnabled(!cinematic.enabled);
+    const b = document.getElementById('cameraMode');
+    if (b) { b.textContent = cinematic.enabled ? 'AUTO CAM' : 'MANUAL CAM'; b.classList.toggle('on', !cinematic.enabled); }
+    hud.toast(cinematic.enabled ? 'CINEMATIC CAMERA ON' : 'MANUAL CAMERA');
+  });
+  hud.on('fly', () => { if (move.takeoff()) { story.startFlight(); cinematic.trigger('takeoff', hero, move); hud.setFlightUI(true); cam.bump(0.05); hud.toast('TAKEOFF — THRUSTERS ENGAGED'); } });
+  hud.on('land', () => { if (move.land()) { cinematic.trigger('land', hero, move); hud.toast('LANDING'); } });
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   hud.on('fire', () => {
     if (!move.flying) return;
     dir.set(-Math.sin(cam.yaw), -Math.sin(cam.pitch) * 0.3, -Math.cos(cam.yaw)).normalize();
     const o = [hero.worldPosOf('lHand', new THREE.Vector3()), hero.worldPosOf('rHand', new THREE.Vector3())];
-    if (rep.fire(o, dir)) cam.bump(0.03);
+    if (rep.fire(o, dir)) { cinematic.trigger('fire', hero, move); cam.bump(0.03); }
   });
 
   const clock = new THREE.Clock();
@@ -1248,7 +1407,10 @@ async function boot() {
     if (move.landed) { move.landed = false; hud.setFlightUI(false); hud.toast('LANDED — WALK MODE'); cam.bump(0.06); }
     if (move.hitLimit) hud.toast('EDGE OF THE MAP');
     rings.update(dt, move.pos, rep, hud, move.flying);
+    story.update(dt, move, rep, cinematic, hero);
     wind.update(dt, move.pos, move.vel, move.flying && move.speed > 20, sm.camera.position);
+    if (inp.boost && !hud._boostShot) { cinematic.trigger('boost', hero, move); hud._boostShot = true; }
+    if (!inp.boost) hud._boostShot = false;
     hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading;
     hero.tilt.rotation.set(move.pitch, 0, move.bank);
     hero.update(dt, move.flying ? 1 : 0, move.speed, inp.boost, move.mode, move.vel.y, inp.hover);
@@ -1256,6 +1418,7 @@ async function boot() {
     traffic.update(dt, move.pos);
     rep.update(dt, inp.boost); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
     cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed });
+    cinematic.update(dt, hero);
     hud.readout(move.mode, move.pos.y, move.speed * 3.6, rep.energy);
     sm.render(move.pos, { speed: move.speed, boost: inp.boost });
   })();
