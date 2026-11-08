@@ -80,15 +80,15 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 /* Menu should feel like a character-selection screen, not a diagnostic dashboard. */
 .databaseTop{height:28px;padding:0 16px;font-size:8px}
 .databaseBottom{height:22px;padding:0 16px;font-size:7px;opacity:.65}
-.databaseLayout{height:calc(100% - 50px);padding:12px 16px;gap:12px;grid-template-columns:minmax(145px,22%) minmax(180px,38%) minmax(210px,40%)}
-.databaseNav{gap:6px;padding-right:10px}
+.databaseLayout{height:calc(100% - 50px);padding:12px 16px;gap:12px;grid-template-columns:minmax(145px,.82fr) minmax(180px,1.35fr) minmax(210px,1.25fr)}
+.databaseNav{gap:6px;padding-right:10px;min-width:0}
 .dbTab{height:clamp(32px,6.2vh,42px);font-size:8px}
-.databaseHero{padding:12px 8px;background:radial-gradient(ellipse at 50% 58%,#1d526d66,transparent 60%),linear-gradient(180deg,#0b111a10,#10101805)}
+.databaseHero{padding:12px 8px;background:radial-gradient(ellipse at 50% 58%,#1d526d66,transparent 60%),linear-gradient(180deg,#0b111a10,#10101805);min-width:0}
 .heroTitle{font-size:clamp(20px,3.2vw,34px);margin-top:5px}
 .heroReticle{width:115px;height:115px;border-color:#8ceeff55;color:#a5efff}
 .heroReticle:before,.heroReticle:after{background:#8ceeff55}
 .heroBottom{font-size:7px}
-.jarvisPanel{padding:12px 8px 6px 14px}
+.jarvisPanel{padding:12px 8px 6px 14px;min-width:0}
 .jarvisTag{margin-top:20px}
 .jarvisTitle{font-size:clamp(15px,2.1vw,21px)}
 .jarvisText{font-size:clamp(9px,1.1vw,11px);line-height:1.55}
@@ -197,5 +197,5 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
  document.addEventListener('touchmove',function(e){e.preventDefault()},{passive:false});
 })();
 </script>
-<script type="module" src="./game.js?v=m40"></script>
+<script type="module" src="./game.js?v=m41"></script>
 </body></html>
