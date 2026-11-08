@@ -66,7 +66,7 @@ class AssetManager {
     let i = 0;
     await Promise.all(names.map(async n => {
       try {
-        const r = await fetch('./' + n + '?v=m6'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
+        const r = await fetch('./' + n + '?v=m7'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
         const z = await JSZip.loadAsync(await r.arrayBuffer());
         for (const f of Object.values(z.files)) if (!f.dir) this.entries.set(lc(base(f.name)), f);
         this._ok(n);
@@ -457,6 +457,7 @@ function retargetClip(clip, boneKeys) {
   for (const t of clip.tracks) {
     const i = t.name.lastIndexOf('.'); if (i < 0) continue;
     const ue = t.name.slice(0, i).split(/[|:]/).pop(), prop = t.name.slice(i);
+    if (ue === 'pelvis') continue; // root/hips rotation in the clip lays the hero flat; the tilt group owns posture
     const mix = UE_TO_MIXAMO[ue], target = mix && boneKeys.get(mix.toLowerCase());
     if (!target) continue;
     t.name = target + prop; tracks.push(t);
