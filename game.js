@@ -955,7 +955,7 @@ class ThirdPersonCamera {
 class RepulsorSystem {
   constructor(scene) {
     this.scene = scene; this.energy = 100; this.last = 0; this.shots = [];
-    this.geo = new THREE.SphereGeometry(0.16, 8, 8); this.mat = new THREE.MeshBasicMaterial({ color: 0x8ff0ff, fog: false });
+    this.geo = new THREE.SphereGeometry(0.14, 10, 8); this.mat = new THREE.MeshBasicMaterial({ color: 0x9ff4ff, fog: false }); this.axis = new THREE.Vector3(0,0,1);
     this.pool = [];
   }
   fire(origins, dir) {
@@ -963,8 +963,8 @@ class RepulsorSystem {
     if (this.energy < 6 || now - this.last < 220) return false;
     this.last = now; this.energy -= 6;
     for (const o of origins) {
-      const m = this.pool.pop() || new THREE.Mesh(this.geo, this.mat); m.position.copy(o); this.scene.add(m);
-      this.shots.push({ m, v: dir.clone().multiplyScalar(120), life: 2.2 });
+      const m = this.pool.pop() || new THREE.Mesh(this.geo, this.mat); m.position.copy(o); m.scale.set(0.85,0.85,4.2); m.quaternion.setFromUnitVectors(this.axis,dir); this.scene.add(m);
+      this.shots.push({ m, v: dir.clone().multiplyScalar(150), life: 1.8 });
     }
     return true;
   }
