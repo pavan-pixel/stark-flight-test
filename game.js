@@ -1036,7 +1036,7 @@ class TrafficSystem {
       v.offset += v.dir * v.speed * dt;
       if (v.offset > 680) v.offset = -680;
       if (v.offset < -680) v.offset = 680;
-      const boundary = (v.road - 5) * 110 + 55;
+      const boundary = (v.road - 5) * 110;
       const x = v.axis === 0 ? v.offset : boundary + v.lane;
       const z = v.axis === 0 ? boundary + v.lane : v.offset;
       const yaw = v.axis === 0 ? (v.dir > 0 ? 0 : Math.PI) : (v.dir > 0 ? -Math.PI / 2 : Math.PI / 2);
