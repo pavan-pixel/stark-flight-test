@@ -1207,7 +1207,7 @@ class CinematicDirector {
   if(this.mode==='INTRO'){
    const t=THREE.MathUtils.clamp(this.time/this.duration,0,1),e=t*t*(3-2*t);
    p.set(h.x+1.5,h.y+1.9,h.z+2.4).lerp(new THREE.Vector3(h.x-f.x*9+3,h.y+4.8,h.z-f.z*9+11),e);
-   if(t>=1){this.mode='FOLLOW';this.time=0;}
+   if(t>=1){const completed=this.mode;this.mode='FOLLOW';this.time=0;if(completed!=='INTRO')this.enabled=false;}
   }else if(this.mode==='TAKEOFF'||this.mode==='BOOST'||this.mode==='LANDING'){
    const t=THREE.MathUtils.clamp(this.time/this.duration,0,1);
    const d=this.mode==='BOOST'?15: this.mode==='LANDING'?8:7;
@@ -1300,10 +1300,10 @@ async function boot() {
     document.getElementById('jarvisText').textContent = v[1];
     document.getElementById('jarvisHint').textContent = v[2];
     document.getElementById('jarvisTag').textContent = 'SYSTEM BRIEFING / ' + btn.dataset.topic.toUpperCase();
+    if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(v[1]); u.rate = 0.94; u.pitch = 0.88; window.speechSynthesis.speak(u); }
   }));
   hud.on('start', () => { gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); cine.enabled = false; });
 
-  hud.on('cine', () => { const on=cine.toggle(); hud.toast(on?'CINEMATIC CAMERA':'MANUAL CAMERA'); });
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   hud.on('fire', () => {
     if (!gameStarted || !move.flying) return;
