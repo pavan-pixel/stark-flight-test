@@ -215,7 +215,7 @@ class SceneManager {
       side: THREE.BackSide, depthWrite: false, fog: false,
       uniforms: { sunDir: { value: SUN_DIR } },
       vertexShader: 'varying vec3 vD;void main(){vD=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-      fragmentShader: 'varying vec3 vD;uniform vec3 sunDir;void main(){vec3 d=normalize(vD);float h=clamp(d.y,0.,1.);vec3 hor=vec3(.80,.85,.88),mid=vec3(.46,.62,.84),top=vec3(.16,.38,.72);vec3 c=mix(hor,mid,smoothstep(0.,.25,h));c=mix(c,top,smoothstep(.25,.9,h));float s=max(dot(d,sunDir),0.);c+=vec3(1.,.9,.7)*(pow(s,8.)*.25+pow(s,64.)*.6+pow(s,800.)*4.);gl_FragColor=vec4(c,1.);}',
+      fragmentShader: 'varying vec3 vD;uniform vec3 sunDir;void main(){vec3 d=normalize(vD);float h=clamp(d.y,0.,1.);vec3 hor=vec3(.80,.85,.88),mid=vec3(.46,.62,.84),top=vec3(.16,.38,.72);vec3 c=mix(hor,mid,smoothstep(0.,.25,h));c=mix(c,top,smoothstep(.25,.9,h));float s=max(dot(d,sunDir),0.);c+=vec3(1.,.9,.7)*(pow(s,8.)*.12+pow(s,64.)*.22+pow(s,800.)*1.15);gl_FragColor=vec4(c,1.);}',
     }));
     this.sky.renderOrder = -1;
     this.scene.add(this.sky);
@@ -223,7 +223,7 @@ class SceneManager {
   // Soft radial glow used for the sun flare and the boost bloom.
     this.glowTex = glowTexture();
     this.sunFlare = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xfff1d0, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, fog: false, transparent: true }));
-    this.sunFlare.scale.set(260, 260, 1); this.sunFlare.material.opacity = 0.22; this.sunFlare.renderOrder = 10;
+    this.sunFlare.scale.set(110, 110, 1); this.sunFlare.material.opacity = 0.07; this.sunFlare.renderOrder = 10; this.sunFlare.visible = !perf.isMobile;
     this.scene.add(this.sunFlare);
 
     // Realtime sun shadows on the high tier only (follows the hero, so the 280 m box stays sharp).
@@ -250,11 +250,11 @@ class SceneManager {
     // Lens flare is enabled on mobile too; previously it was hidden inside
     // the desktop post-processing branch, so iPhones never rendered it.
     this.lensflare = new Lensflare();
-    this.lensflare.addElement(new LensflareElement(flareTexture(0), 105, 0, new THREE.Color(1, 0.88, 0.7)));
+    this.lensflare.addElement(new LensflareElement(flareTexture(0), 48, 0, new THREE.Color(1, 0.88, 0.7)));
     this.lensflare.addElement(new LensflareElement(flareTexture(1), 34, 0.32, new THREE.Color(1, 0.78, 0.48)));
     this.lensflare.addElement(new LensflareElement(flareTexture(1), 58, 0.62, new THREE.Color(0.62, 0.8, 1)));
     this.lensflare.addElement(new LensflareElement(flareTexture(0), 22, 0.92, new THREE.Color(1, 0.68, 0.38)));
-    this.scene.add(this.lensflare);
+    this.lensflare.visible = !perf.isMobile; this.scene.add(this.lensflare);
     addEventListener('resize', () => this.resize());
     perf.onTierChange = t => this.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio));
   }
@@ -327,12 +327,14 @@ class CityManager {
     progress('LOADING BUILDING MODELS', 10);
     const names = buildingNames(a);
     if (!names.length) throw new Error('No building_*.gltf models found in any ZIP');
-    const suburbanNames = Array.from({ length: 8 }, (_, i) => `suburban-building-type-${String.fromCharCode(97 + i)}.glb`);
+    // Only request optional suburban assets that actually exist in the mounted archives.
+    // Missing optional files should never delay the core city build.
+    const suburbanNames = Array.from({ length: 8 }, (_, i) => `suburban-building-type-${String.fromCharCode(97 + i)}.glb`).filter(n => a.has(n));
     const [gb, suburban, treeLarge, treeSmall, decalCross, decalYellow] = await Promise.all([
       Promise.all(names.map(n => a.loadGLTF(n).catch(() => null))),
       Promise.all(suburbanNames.map(n => a.loadGLTF(n).catch(() => null))),
-      a.loadGLTF('suburban-tree-large.glb').catch(() => null),
-      a.loadGLTF('suburban-tree-small.glb').catch(() => null),
+      a.has('suburban-tree-large.glb') ? a.loadGLTF('suburban-tree-large.glb').catch(() => null) : Promise.resolve(null),
+      a.has('suburban-tree-small.glb') ? a.loadGLTF('suburban-tree-small.glb').catch(() => null) : Promise.resolve(null),
       a.loadGLTF(base + 'Decal_Crosswalk.gltf'), a.loadGLTF(base + 'Decal_DoubleYellow_Straight.gltf'),
     ]);
     progress('PROCESSING CITY GEOMETRY', 55);
