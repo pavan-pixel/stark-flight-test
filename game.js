@@ -66,7 +66,7 @@ class AssetManager {
     let i = 0;
     await Promise.all(names.map(async n => {
       try {
-        const r = await fetch('./' + n + '?v=m4'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
+        const r = await fetch('./' + n + '?v=m5'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
         const z = await JSZip.loadAsync(await r.arrayBuffer());
         for (const f of Object.values(z.files)) if (!f.dir) this.entries.set(lc(base(f.name)), f);
         this._ok(n);
@@ -291,6 +291,9 @@ class CityManager {
     this.templates.forEach(t => {
       t.instanced = t.meshes.map(m => {
         const im = new THREE.InstancedMesh(m.geometry, m.material, cap);
+        im.setColorAt(0, C.setRGB(1, 1, 1)); // create the instance colour buffer up front...
+        if (im.instanceColor) im.instanceColor.needsUpdate = true;
+        if (m.material) m.material.needsUpdate = true; // ...and make the shader compile with instance colour
         im.count = 0; im.frustumCulled = false; this.group.add(im); this.nearMeshes.push(im); return im;
       });
     });
@@ -452,6 +455,9 @@ const UE_TO_MIXAMO = {
 // restUE / restMix: rest-pose local quaternions of each rig, so animation is applied relative to rest pose
 // (this is what stops limbs from twisting when the two rigs use different T/A-poses).
 function retargetClip(clip, boneKeys, restUE, restMix) {
+  // Hips translation: the clip rig and hero rig use different units, so scale by the rest-height ratio.
+  const hipUE = restUE.get('pelvis'), hipMix = restMix.get('mixamorig:Hips') || restMix.get(boneKeys.get('hips'));
+  const posScale = hipUE && hipMix && hipUE.p.y > 1e-6 ? hipMix.p.y / hipUE.p.y : 1;
   const tracks = [];
   for (const t of clip.tracks) {
     const i = t.name.lastIndexOf('.'); if (i < 0) continue;
@@ -461,13 +467,15 @@ function retargetClip(clip, boneKeys, restUE, restMix) {
     if (prop === '.quaternion') {
       const rU = restUE.get(ue), rM = restMix.get(target);
       if (!rU || !rM) continue;             // no rest pose to relate to: skip rather than twist the limb
-      const inv = rU.clone().invert(), v = t.values, out = new Float32Array(v.length), q = new THREE.Quaternion();
+      const inv = rU.q.clone().invert(), rMq = rM.q, v = t.values, out = new Float32Array(v.length), q = new THREE.Quaternion();
       for (let k = 0; k < v.length; k += 4) {
         q.set(v[k], v[k + 1], v[k + 2], v[k + 3]);
-        q.premultiply(inv).premultiply(rM);   // rM * (rU^-1 * q)
+        q.premultiply(inv).premultiply(rMq);  // rM * (rU^-1 * q)
         out[k] = q.x; out[k + 1] = q.y; out[k + 2] = q.z; out[k + 3] = q.w;
       }
       t.values = out;
+    } else if (prop === '.position' && ue === 'pelvis') {
+      const v = t.values; for (let k = 0; k < v.length; k++) v[k] *= posScale;
     }
     t.name = target + prop; tracks.push(t);
   }
@@ -556,13 +564,13 @@ class IronMan {
     async _loadAnimations(obj) {
     this.mixer = new THREE.AnimationMixer(obj); this.actions = {}; this.current = null;
     const boneKeys = new Map(), restMix = new Map();
-    obj.traverse(o => { if (o.isBone) { boneKeys.set(o.name.replace(/^mixamorig:?/, '').toLowerCase(), o.name); restMix.set(o.name, o.quaternion.clone()); } });
+    obj.traverse(o => { if (o.isBone) { boneKeys.set(o.name.replace(/^mixamorig:?/, '').toLowerCase(), o.name); restMix.set(o.name, { q: o.quaternion.clone(), p: o.position.clone() }); } });
     const files = { idle: 'Idle_relaxed.fbx', walk: 'Walk_forwards.fbx', run: 'Run_sprint.fbx', fly: 'Jump_in_the_air.fbx' };
     await Promise.all(Object.entries(files).map(async ([k, f]) => {
       try {
         const o = await this.assets.loadFBX(f);
         const raw = o.animations && o.animations[0];
-        const restUE = new Map(); o.traverse(b => { if (b.isBone) restUE.set(b.name, b.quaternion.clone()); });
+        const restUE = new Map(); o.traverse(b => { if (b.isBone) restUE.set(b.name, { q: b.quaternion.clone(), p: b.position.clone() }); });
         const clip = raw && retargetClip(raw, boneKeys, restUE, restMix);
         if (clip && clip.tracks.length) { const a = this.mixer.clipAction(clip); a.setLoop(THREE.LoopRepeat); a.play(); a.setEffectiveWeight(0); this.actions[k] = a; }
       } catch (e) { this.assets.onError('ANIM ' + f + ': ' + (e.message || e)); }
