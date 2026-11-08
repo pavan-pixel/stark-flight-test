@@ -926,7 +926,7 @@ class IronMan {
 
 // ===== character/MovementController.js =====
 
-const WALK = 4.5, RUN = 9.5, FLY = 38, FLY_BOOST = 95, RADIUS = 0.7;
+const WALK = 3.2, RUN = 6.2, FLY = 19, FLY_BOOST = 52, RADIUS = 0.7;
 const MODE = { WALK: 'WALK', TAKEOFF: 'TAKEOFF', FLY: 'FLIGHT', LANDING: 'LANDING' };
 
 // Camera-relative walking and (M1) free flight with takeoff/landing phases. Animations come in Milestone 2.
@@ -935,7 +935,7 @@ class MovementController {
     this.pos = new THREE.Vector3(0, 0, 0); this.vel = new THREE.Vector3();
     this.heading = 0; this.mode = MODE.WALK; this.targetAlt = 0; this.speed = 0; this.bank = 0; this.pitch = 0; this.hitLimit = false;
   }
-  takeoff() { if (this.mode === MODE.WALK) { this.mode = MODE.TAKEOFF; this.targetAlt = 70; this.takeoffT = 0; return true; } return false; }
+  takeoff() { if (this.mode === MODE.WALK) { this.mode = MODE.TAKEOFF; this.takeoffStart = this.pos.y; this.targetAlt = this.pos.y + 10; this.takeoffT = 0; this.vel.set(0,0,0); return true; } return false; }
   land() { if (this.mode === MODE.FLY || this.mode === MODE.TAKEOFF) { this.mode = MODE.LANDING; this.targetAlt = 0; return true; } return false; }
   // Walk-first startup: LAND puts Mark 85 on the nearest surface (street or rooftop).
   startFlying() { this.mode = MODE.FLY; this.pos.y = 70; this.targetAlt = 70; this.landed = false; }
@@ -947,9 +947,9 @@ class MovementController {
     const mag = Math.min(1, dir.length()); if (mag > 1e-3) dir.normalize();
     const airborne = this.mode !== MODE.WALK;
     let top = airborne ? (inp.boost ? FLY_BOOST : (inp.hover ? 4 : FLY)) : (inp.run ? RUN : WALK);
-    if (this.mode === MODE.TAKEOFF || this.mode === MODE.LANDING) top = Math.min(top, 8);
+    if (this.mode === MODE.TAKEOFF) top = 0; if (this.mode === MODE.LANDING) top = 3;
     const want = dir.multiplyScalar(top * mag);
-    const k = Math.min(1, dt * (airborne ? 4 : 9));
+    const k = Math.min(1, dt * (airborne ? (inp.boost ? 2.8 : 2.0) : 6));
     this.vel.x += (want.x - this.vel.x) * k; this.vel.z += (want.z - this.vel.z) * k;
     const prevHeading = this.heading;
     if (mag > 0.08) { const a = Math.atan2(-dir.x, -dir.z); let d = a - this.heading; d = Math.atan2(Math.sin(d), Math.cos(d)); this.heading += d * Math.min(1, dt * (airborne ? 7 : 10)); }
@@ -960,9 +960,9 @@ class MovementController {
     if (this.mode === MODE.FLY) this.targetAlt = THREE.MathUtils.clamp(this.targetAlt + (inp.up - inp.down) * (inp.boost ? 40 : 16) * dt, 2, 420);
     const ground = city.surfaceAt(this.pos.x, this.pos.z);
     if (this.mode === MODE.LANDING) this.targetAlt = ground; // M2: descend onto whatever is below, roof or street
-    const climb = this.mode === MODE.LANDING ? 1.8 : 2.4;
+    const climb = this.mode === MODE.TAKEOFF ? 1.25 : this.mode === MODE.LANDING ? 1.35 : 2.0;
     this.pos.y = THREE.MathUtils.damp(this.pos.y, Math.max(this.targetAlt, ground), climb, dt);
-    if (this.mode === MODE.TAKEOFF && (this.takeoffT += dt) > 0.6 && this.pos.y > this.targetAlt - 1.5) this.mode = MODE.FLY;
+    if (this.mode === MODE.TAKEOFF && (this.takeoffT += dt) > 1.35 && this.pos.y > this.targetAlt - 0.8) { this.mode = MODE.FLY; this.targetAlt = this.pos.y; }
     if (this.mode === MODE.LANDING && this.pos.y < ground + 0.06) { this.pos.y = ground; this.mode = MODE.WALK; this.landed = true; }
     if (this.mode === MODE.WALK) this.pos.y = THREE.MathUtils.damp(this.pos.y, ground, 14, dt);
 
@@ -994,12 +994,12 @@ class ThirdPersonCamera {
   }
   attach(el) {
     el.style.touchAction = 'none';
-    el.addEventListener('pointerdown', e => { this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); el.setPointerCapture(e.pointerId); if (this.pointers.size === 2) this.pinch = this._span(); });
+    el.style.touchAction='none'; el.addEventListener('pointerdown', e => { if(e.target.closest('#joy,.controls,button,input,select,#minimapWrap'))return; e.preventDefault(); this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); try{el.setPointerCapture(e.pointerId);}catch(_){} if (this.pointers.size === 2) this.pinch = this._span(); });
     el.addEventListener('pointermove', e => {
-      const p = this.pointers.get(e.pointerId); if (!p) return;
+      const p = this.pointers.get(e.pointerId); if (!p) return; e.preventDefault();
       const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
       if (this.pointers.size >= 2) { const s = this._span(); this.userDist = clamp(this.userDist * (this.pinch / Math.max(s, 1)), 0.6, 2.2); this.pinch = s; }
-      else { this.yaw -= dx * 0.0044; this.pitch = clamp(this.pitch + dy * 0.0031, -0.34, 0.92); }
+      else { this.yaw -= dx * 0.0030; this.pitch = clamp(this.pitch + dy * 0.0022, -0.30, 0.72); }
     });
     const up = e => { this.pointers.delete(e.pointerId); if (this.pointers.size < 2) this.pinch = 0; };
     el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); el.addEventListener('lostpointercapture', up);
@@ -1088,19 +1088,19 @@ class HUD {
   _joystick() {
     const joy = $('joy'), stick = $('stick'); let pid = null;
     const move = e => {
-      const r = joy.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2), max = r.width * 0.39, len = Math.hypot(dx, dy), k = Math.min(1, max / (len || 1)), rawX = dx * k / max, rawY = -dy * k / max, mag = Math.hypot(rawX, rawY);
-      const dead = 0.10, shaped = mag <= dead ? 0 : Math.pow((mag - dead) / (1 - dead), 1.28);
+      const r = joy.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2), max = r.width * 0.30, len = Math.hypot(dx, dy), k = Math.min(1, max / (len || 1)), rawX = dx * k / max, rawY = -dy * k / max, mag = Math.hypot(rawX, rawY);
+      const dead = 0.19, shaped = mag <= dead ? 0 : Math.pow((mag - dead) / (1 - dead), 1.85) * 0.68;
       const scale = mag > 0 ? shaped / mag : 0; this.steer.x = rawX * scale; this.steer.y = rawY * scale; stick.style.transform = `translate(${dx * k}px,${dy * k}px)`;
     };
-    joy.addEventListener('pointerdown', e => { pid = e.pointerId; joy.setPointerCapture(pid); move(e); });
-    joy.addEventListener('pointermove', e => { if (e.pointerId === pid) move(e); });
+    joy.style.touchAction='none'; joy.addEventListener('pointerdown', e => { e.preventDefault(); pid = e.pointerId; try{joy.setPointerCapture(pid);}catch(_){} move(e); });
+    joy.addEventListener('pointermove', e => { if (e.pointerId === pid) {e.preventDefault();move(e);} });
     const end = e => { if (e.pointerId !== pid) return; pid = null; this.steer.x = this.steer.y = 0; stick.style.transform = 'translate(0,0)'; };
-    joy.addEventListener('pointerup', end); joy.addEventListener('pointercancel', end);
+    joy.addEventListener('pointerup', end); joy.addEventListener('pointercancel', end); joy.addEventListener('lostpointercapture',end);
   }
   _hold(id, key, val = 1) {
     const b = $(id), set = v => { this.input[key] = v ? val : (typeof val === 'number' ? 0 : false); b.classList.toggle('on', !!v); };
-    b.addEventListener('pointerdown', e => { b.setPointerCapture(e.pointerId); set(true); });
-    for (const ev of ['pointerup', 'pointercancel']) b.addEventListener(ev, () => set(false));
+    b.style.touchAction='none'; b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); try{b.setPointerCapture(e.pointerId);}catch(_){} set(true); });
+    for (const ev of ['pointerup', 'pointercancel','lostpointercapture']) b.addEventListener(ev, () => set(false));
   }
   _buttons() {
     $('run').addEventListener('click', () => { this.input.run = !this.input.run; $('run').classList.toggle('on', this.input.run); this.toast(this.input.run ? 'RUN MODE' : 'WALK MODE'); });
@@ -1452,7 +1452,7 @@ async function boot() {
     document.getElementById('jarvisTag').textContent = 'SYSTEM BRIEFING / ' + btn.dataset.topic.toUpperCase();
     if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(v[1]); u.rate = 0.94; u.pitch = 0.88; window.speechSynthesis.speak(u); }
   }));
-  hud.on('start', () => { const selected=document.getElementById('missionSelect')?.value||'city'; missionEnv.setMission(selected); mission.build(selected); if(selected==='city'&&nycOk){nycWorld.activate();move.pos.set(0,0,0);}else{nycWorld.group.visible=false;city.group.visible=selected==='city';move.pos.copy(missionEnv.spawn);} move.vel.set(0,0,0); move.heading=0; move.mode=MODE.WALK; gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); hud.setFlightUI(false); cine.trigger('INTRO', 2.4); });
+  hud.on('start', () => { const selected=document.getElementById('missionSelect')?.value||'city'; if(selected==='city'&&!nycOk){hud.toast('NEW YORK WORLD FAILED TO LOAD — CHECK SYSTEM LOG');hud.logError('NYC world is unavailable; deployment blocked to avoid showing the placeholder city.');return;} missionEnv.setMission(selected); mission.build(selected); if(selected==='city'&&nycOk){nycWorld.activate();move.pos.set(0,0,0);}else{nycWorld.group.visible=false;city.group.visible=selected==='city';move.pos.copy(missionEnv.spawn);} move.vel.set(0,0,0); move.heading=0; move.mode=MODE.WALK; gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); hud.setFlightUI(false); cine.trigger('INTRO', 2.4); });
 
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   let cameraMode='THIRD', lockedTarget=null;

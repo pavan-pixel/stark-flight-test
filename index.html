@@ -140,6 +140,22 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 @media(max-height:440px){.missionPicker{margin-top:6px}.missionPicker select{padding:6px}.helmetTop,.helmetBottom{padding:7px 0}}
 
 
+
+/* STARK mobile input surfaces: camera swipes only on the unobstructed world */
+html,body{overscroll-behavior:none}
+canvas{touch-action:none;-webkit-user-select:none;user-select:none}
+#ui{touch-action:pan-x pan-y}
+#joy,.controls,.controls button,#minimapWrap{touch-action:none}
+#joy{z-index:12;pointer-events:auto}
+.controls{z-index:13;pointer-events:auto}
+#minimapWrap{pointer-events:none}
+@media(max-width:700px){
+ .bottom{align-items:flex-end;gap:clamp(12px,4vw,34px)}
+ .joystick{touch-action:none}
+ #ui .controls{grid-template-columns:repeat(3,50px);gap:5px;max-width:160px}
+ #ui .btn{height:40px;min-width:50px;border-radius:11px}
+}
+
 /* Mission deployment and combat HUD */
 .missionPicker{display:flex;align-items:center;gap:10px;margin-top:14px;color:#b56b6d;font:8px ui-monospace,monospace;letter-spacing:.14em;flex-wrap:wrap}
 .missionPicker select{background:#160d16;color:#f0dfe1;border:1px solid #a74b4e;padding:9px 12px;font:9px ui-monospace,monospace;letter-spacing:.08em;min-width:165px}
@@ -187,6 +203,64 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #starkIntro.leave img{opacity:0;transform:scale(1.08)}
 @keyframes reactorPulse{from{filter:brightness(1);box-shadow:0 0 25px 12px #62eaff99,0 0 70px 30px #168dff55}to{filter:brightness(1.8);box-shadow:0 0 42px 22px #a6f8ffdd,0 0 130px 65px #168dff99}}
 @media(prefers-reduced-motion:reduce){#starkIntro img,#starkIntro:after{transition-duration:.2s;animation:none}}
+
+/* NYC deployment terminal / cinematic Stark presentation */
+#mainmenu{background:radial-gradient(ellipse at 51% 42%,#163b55aa 0%,#07121feF 46%,#03070d 100%);isolation:isolate}
+#mainmenu:before{content:"";position:absolute;inset:0;z-index:-1;opacity:.32;background:linear-gradient(90deg,transparent 49.8%,#80dfff22 50%,transparent 50.2%),linear-gradient(0deg,transparent 49.8%,#80dfff18 50%,transparent 50.2%),repeating-linear-gradient(0deg,transparent 0 42px,#9feaff0b 43px),repeating-linear-gradient(90deg,transparent 0 42px,#9feaff0b 43px)}
+#mainmenu:after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(90deg,#02060bd9 0%,transparent 22%,transparent 78%,#02060bd9 100%),linear-gradient(0deg,#02060bcc,transparent 25%,transparent 80%,#02060b99)}
+.databaseTop,.databaseBottom{border-color:#7bdcff55;color:#9bc5d7;text-shadow:0 0 12px #42cfff44}
+.databaseLayout{position:relative}
+.databaseNav,.jarvisPanel{background:linear-gradient(145deg,#0b2030dd,#07111beF);border:1px solid #75dfff55;box-shadow:0 18px 50px #0008,inset 0 1px #d9faff12;backdrop-filter:blur(18px)}
+.databaseNav{border-left:2px solid #51d7ff}
+.dbTab{border:1px solid #76dfff22;background:linear-gradient(90deg,#102c3eaa,#07121b88);color:#b8dce9;transition:all .2s ease}
+.dbTab.active,.dbTab:focus-visible{border-color:#9ceeff;color:#f2fdff;background:linear-gradient(90deg,#1c5a76dd,#10283c);box-shadow:0 0 22px #32caff33,inset 3px 0 #8beaff}
+.databaseHero{position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% 48%,#2c9acb44,#0b1c2caa 44%,#030912ee 100%);border:1px solid #8beaff55;box-shadow:0 0 45px #28bfff18,inset 0 0 50px #4fcfff12}
+.databaseHero:before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent 0 5px,#8deaff0b 6px),linear-gradient(120deg,transparent 25%,#8deaff0c 50%,transparent 75%);pointer-events:none}
+.databaseHero:after{content:"";position:absolute;left:50%;top:48%;width:min(22vw,210px);aspect-ratio:1;border:1px solid #80eaff44;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 12px #63dfff0b,0 0 0 28px #63dfff08,0 0 42px #37cfff33;pointer-events:none}
+.heroTitle{color:#e8faff;text-shadow:0 0 25px #56dfff66;letter-spacing:.12em}
+.heroTitle b{color:#f0c982}
+.heroReticle{border-color:#b5f4ff;background:radial-gradient(circle,#fff 0%,#8deaff 12%,#168ecb55 35%,transparent 70%);box-shadow:0 0 22px #66eaff,0 0 70px #149fff77;animation:reactorBreath 2.8s ease-in-out infinite}
+.heroBottom{border-top:1px solid #8beaff55;color:#a9d8e8}
+.jarvisHeader{color:#bdf5ff}
+.jarvisDot{box-shadow:0 0 12px #61eaff}
+.jarvisTitle{color:#effcff;text-shadow:0 0 18px #56cfff55;letter-spacing:.06em}
+.jarvisText{color:#b2c9d6}
+.missionPicker select{border-color:#7bdcff88;background:#071a29;color:#d9f8ff;border-radius:3px}
+.menuBtn{border:1px solid #8beaff66;background:linear-gradient(140deg,#12344a,#07131e);color:#d9f8ff;letter-spacing:.14em;box-shadow:0 8px 24px #0006,inset 0 1px #ffffff12}
+.menuBtn.primary{background:linear-gradient(120deg,#167da5,#0b324c);border-color:#a9f0ff;color:#fff;box-shadow:0 0 26px #28bfff44}
+.menuBtn:active{transform:scale(.98)}
+@keyframes reactorBreath{0%,100%{filter:brightness(.82);box-shadow:0 0 18px #66eaff99,0 0 48px #149fff33}50%{filter:brightness(1.35);box-shadow:0 0 32px #a8f8ffdd,0 0 86px #149fff77}}
+@media(prefers-reduced-motion:reduce){.heroReticle{animation:none}}
+
+
+/* STARK cinematic menu + touch interaction pass */
+:root{--cyan:#8cecff;--gold:#f2cf91;--ink:#030a13}
+#mainmenu{background:radial-gradient(ellipse at 51% 45%,#0c3145aa 0%,#061521bb 35%,#02060df2 78%),linear-gradient(120deg,#020711,#0a1724 52%,#030812)}
+#mainmenu:before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.26;background:linear-gradient(90deg,transparent 49.9%,#8cecff22 50%,transparent 50.1%),linear-gradient(0deg,transparent 49.9%,#8cecff18 50%,transparent 50.1%);background-size:72px 72px;mask-image:radial-gradient(ellipse at center,#000,transparent 78%)}
+.databaseTop,.databaseBottom{border-color:#6eddf044;color:#9bbac9}
+.databaseLayout{position:relative;z-index:1;grid-template-columns:minmax(150px,22%) minmax(210px,38%) minmax(230px,40%);gap:clamp(10px,2vw,24px)}
+.databaseNav{border-color:#6eddf033}
+.navLabel,.jarvisHint{color:#8cecff}
+.dbTab{border:1px solid #75dff033;background:linear-gradient(100deg,#0c2030cc,#06111ccc);color:#c5dce5;border-radius:3px;transition:background .2s,border-color .2s,transform .2s}
+.dbTab span,.dbTab i{color:#8cecff}
+.dbTab.active{border-color:#8cecff;background:linear-gradient(90deg,#15506a99,#091b2bcc);box-shadow:inset 2px 0 #8cecff,0 0 20px #37bfff12}
+.databaseHero{border-color:#6eddf033;background:radial-gradient(ellipse at 50% 54%,#1c789255,transparent 52%),linear-gradient(180deg,#071a2a44,#02091422)}
+.heroScan{color:#8cecff}.heroTitle{color:#eefaff;text-shadow:0 0 28px #53dfff33}.heroTitle b{color:#8cecff}.heroSub{color:#9abac9}
+.heroReticle{width:clamp(112px,17vw,190px);height:clamp(112px,17vw,190px);border:1px solid #8cecff66;box-shadow:0 0 35px #43dfff22,inset 0 0 32px #43dfff16;color:#baf7ff}
+.heroReticle:before,.heroReticle:after{background:#8cecff66}
+.heroBottom{color:#a8c8d7}.heroBottom b{color:#a7f3ff}
+.jarvisPanel{background:linear-gradient(155deg,#0b1d2cdd,#050c16ee);border:1px solid #79ddf044;border-radius:4px;padding:clamp(12px,2vw,22px);box-shadow:0 16px 60px #0007,inset 0 1px #ffffff0b}
+.jarvisHeader{color:#baf4ff}.jarvisHeader small{color:#6f9eaf}.jarvisDot{background:#8cecff;box-shadow:0 0 12px #8cecff}
+.jarvisTag{color:#8cecff;border-color:#6eddf044}.jarvisTitle{color:#f1fbff}.jarvisText{color:#a9c1ce}.jarvisRule{background:#6eddf044}
+.missionPicker{color:#8cecff}.missionPicker select{background:#061522;color:#e6faff;border:1px solid #72dff066;border-radius:3px}
+.menuBtn{border:1px solid #7ddff077;background:linear-gradient(140deg,#102c40,#071522);color:#dffaff;border-radius:3px;box-shadow:0 8px 22px #0005}
+.menuBtn.primary{background:linear-gradient(120deg,#17627a,#0b2638);border-color:#a6f1ff;color:#f3fdff}
+.databaseBottom{color:#7297a9}
+.cameraHint{position:absolute;left:50%;top:17%;transform:translateX(-50%);font:8px ui-monospace,monospace;letter-spacing:.22em;color:#b6eafa77;pointer-events:none;white-space:nowrap;text-shadow:0 0 12px #47d9ff33}
+canvas,#joy,.controls,.btn{touch-action:none;-webkit-user-select:none;user-select:none}
+@media(max-width:900px){.databaseLayout{grid-template-columns:minmax(120px,25%) minmax(140px,32%) minmax(180px,43%);gap:7px}.jarvisPanel{padding:10px 8px}}
+@media(max-height:440px){.databaseLayout{padding:5px 10px}.databaseHero{padding:8px 5px}.heroReticle{width:90px;height:90px}.jarvisPanel{padding:8px}}
+
 </style>
 </head>
 <body>
@@ -239,7 +313,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 <div id="tutorial"><div class="tutorialCard"><div class="jarvisHeader"><span class="jarvisDot"></span> J.A.R.V.I.S. / FLIGHT BRIEFING</div><h2>FLIGHT CONTROL TRAINING</h2><p><b>Movement:</b> Use the left control pad to walk and steer.</p><p><b>Camera:</b> Drag the open screen area to look around.</p><p><b>Takeoff:</b> Select FLY. Use UP and DOWN to control altitude.</p><p><b>Flight:</b> Hold BOOST for acceleration. Use FIRE to discharge both repulsors.</p><p><b>Landing:</b> Select LAND when you are near a safe surface.</p><p class="jarvisQuote">“I will monitor your flight systems, sir. Try to avoid the buildings.”</p><button class="menuBtn primary" id="closeTutorial">ACKNOWLEDGED</button></div></div><div id="ui" class="gameHidden">
  <div class="top"><div><div class="brand">STARK INDUSTRIES</div><div class="sub">MARK 85 // OPEN CITY BUILD // M21</div><div class="sub" id="assetstat"></div></div>
   <div class="readout">MODE <b id="mode">WALK</b><br>ALT <b id="alt">GROUND</b><br>SPD <b id="spd">0</b><br>NRG <b id="nrg">100</b></div></div>
- <div id="toast"></div><div id="mission">OPERATION · HOSTILES 0/6</div><div id="helmetHud"><div class="helmetTop"><span>J.A.R.V.I.S. / TACTICAL LINK</span><span id="healthValue">100%</span></div><div class="helmetReticle">+</div><div class="helmetBottom"><span>ARC REACTOR <b id="helmetEnergy">100%</b></span><span>THREAT SCAN <b id="targetStatus">STANDBY</b></span></div></div><div id="minimapWrap"><canvas id="minimap" width="160" height="160"></canvas></div>
+ <div id="toast"></div><div class="cameraHint">DRAG OPEN SCREEN TO LOOK · PINCH TO ZOOM</div><div id="mission">OPERATION · HOSTILES 0/6</div><div id="helmetHud"><div class="helmetTop"><span>J.A.R.V.I.S. / TACTICAL LINK</span><span id="healthValue">100%</span></div><div class="helmetReticle">+</div><div class="helmetBottom"><span>ARC REACTOR <b id="helmetEnergy">100%</b></span><span>THREAT SCAN <b id="targetStatus">STANDBY</b></span></div></div><div id="minimapWrap"><canvas id="minimap" width="160" height="160"></canvas></div>
  <div class="bottom"><div><div class="joystick" id="joy"><div class="stick" id="stick"></div></div></div>
  <div class="controls">
   <button class="btn" id="run"><span class="glyph">⌁</span><span class="btnLabel">RUN</span></button><button class="btn" id="attack" aria-label="Punch" hidden><span class="glyph">✊</span><span class="btnLabel">PUNCH</span></button><button class="btn" id="kick" aria-label="Kick" hidden><span class="glyph">➤</span><span class="btnLabel">KICK</span></button><button class="btn gold" id="fly"><span class="glyph">✧</span><span class="btnLabel">FLY</span></button>
@@ -256,8 +330,8 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
  addEventListener('error',function(e){fail((e.filename?e.filename.split('/').pop()+':'+e.lineno+' — ':'')+(e.message||'Script failed to load'))});
  addEventListener('unhandledrejection',function(e){fail(e.reason&&e.reason.message||e.reason||'Module rejected')});
  setTimeout(function(){var t=document.getElementById('loadtext');if(t&&t.textContent==='INITIALIZING SYSTEMS')fail('Game module did not start. Check network / CDN access.')},12000);
- document.addEventListener('touchmove',function(e){e.preventDefault()},{passive:false});
+ // Touch gestures are managed by the game canvas and individual controls; avoid a page-wide touch blocker.
 })();
 </script>
-<script type="module" src="./game.js?v=m43"></script>
+<script type="module" src="./game.js?v=m44"></script>
 </body></html>
