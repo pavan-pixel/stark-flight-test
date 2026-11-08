@@ -1204,7 +1204,7 @@ class CinematicDirector {
   const f=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)),r=new THREE.Vector3(f.z,0,-f.x);
   const p=this.tmp,target=new THREE.Vector3(h.x,h.y+1.1,h.z);
   if(this.mode==='MENU'){
-   p.set(h.x+2.5,h.y+1.55,h.z+4.8);
+   p.set(h.x+1.35,h.y+1.2,h.z+3.15);
   }else if(this.mode==='INTRO'){
    const t=THREE.MathUtils.clamp(this.time/this.duration,0,1),e=t*t*(3-2*t);
    p.set(h.x+1.5,h.y+1.9,h.z+2.4).lerp(new THREE.Vector3(h.x-f.x*9+3,h.y+4.8,h.z-f.z*9+11),e);
@@ -1319,7 +1319,7 @@ async function boot() {
     requestAnimationFrame(frame);
     const dt = Math.min(clock.getDelta(), 0.05);
     perf.frame(dt);
-    if (!gameStarted) { cine.update(dt, move); hero.root.position.copy(move.pos); city.update(move.pos); traffic.update(dt, move.pos); sm.render(move.pos, {}); return; }
+    if (!gameStarted) { hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading; hero.update(dt, 0, 0, false, MODE.WALK, 0, false); city.update(move.pos); traffic.update(dt, move.pos); cine.update(dt, move); sm.render(move.pos, {}); return; }
     const inp = { x: hud.steer.x, y: hud.steer.y, run: hud.input.run, boost: hud.input.boost && move.mode === MODE.FLY && rep.energy > 1, hover: hud.input.hover, up: hud.input.up, down: hud.input.down };
     move.update(dt, inp, cam.yaw, city);
     if (move.landed) { move.landed = false; hud.setFlightUI(false); hud.toast('LANDED — WALK MODE'); cam.bump(0.06); }
