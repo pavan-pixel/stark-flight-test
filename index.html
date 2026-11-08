@@ -1,158 +1,28 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>STARK FLIGHT TEST 0.2</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="theme-color" content="#050a12"><title>PROJECT STARK — Flight Test 01</title>
 <style>
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#07111c;color:#eaf7ff;font-family:system-ui,-apple-system,Segoe UI,sans-serif;touch-action:none}
-#game{position:fixed;inset:0}canvas{display:block;width:100%;height:100%}
-#hud{position:fixed;inset:0;pointer-events:none}
-.panel{background:linear-gradient(135deg,rgba(7,20,34,.82),rgba(5,12,22,.55));border:1px solid #6acfff55;border-radius:11px;padding:8px 11px;backdrop-filter:blur(9px);box-shadow:0 0 20px #00aaff12}
-.top{position:absolute;top:max(10px,env(safe-area-inset-top));left:12px;right:12px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
-.brand{font-size:11px;letter-spacing:.2em;font-weight:900;color:#bdeeff}
-.sub{font-size:10px;color:#a9c7dc;margin-top:3px}
-#mission{font-size:10px;letter-spacing:.08em;text-align:right;color:#9ee8ff}
-#missionText{font-size:10px;color:#d8eaf5;margin-top:3px;max-width:180px;text-align:right}
-#reticle{position:absolute;left:50%;top:46%;width:27px;height:27px;transform:translate(-50%,-50%);border:1px solid #a5e9ff9c;border-radius:50%;box-shadow:0 0 12px #29bfff44}
-#reticle:before,#reticle:after{content:"";position:absolute;background:#a5e9ff9c}
-#reticle:before{width:39px;height:1px;left:-7px;top:12px}#reticle:after{height:39px;width:1px;top:-7px;left:12px}
-#message{position:absolute;top:19%;left:50%;transform:translateX(-50%);font-size:10px;letter-spacing:.22em;color:#d8f5ff;text-shadow:0 0 15px #00aaff;white-space:nowrap;text-align:center}
-#controls{position:absolute;bottom:max(12px,env(safe-area-inset-bottom));left:0;right:0;height:150px}
-#stick{position:absolute;left:15px;bottom:5px;width:118px;height:118px;border-radius:50%;border:1px solid #8ddfff88;background:radial-gradient(circle,#193e59bb,#081827bb);pointer-events:auto;touch-action:none}
-#nub{position:absolute;left:35px;top:35px;width:46px;height:46px;border-radius:50%;border:2px solid #e4faff;background:linear-gradient(145deg,#b8efff,#287ea9);box-shadow:0 0 20px #2dbdff88}
-.buttons{position:absolute;right:12px;bottom:5px;display:grid;grid-template-columns:repeat(3,62px);gap:7px;pointer-events:auto}
-button{height:49px;border-radius:12px;border:1px solid #75d9ff88;background:linear-gradient(145deg,#16415d,#091b2a);color:#effaff;font-weight:850;font-size:9px;letter-spacing:.04em;box-shadow:0 4px 14px #0008;touch-action:none}
-button.active{background:linear-gradient(145deg,#a34a2d,#421d25);box-shadow:0 0 17px #ff754688}
-#fire{border-color:#ffad7b;background:linear-gradient(145deg,#813c28,#341723)}
-#start{position:fixed;z-index:5;inset:0;display:flex;align-items:center;justify-content:center;padding:22px;text-align:center;background:radial-gradient(ellipse at 50% 40%,#173c58ee,#030811f7)}
-.card{width:min(440px,100%);padding:25px 22px;border-radius:20px;border:1px solid #75dfff66;background:linear-gradient(145deg,#0c2135ed,#07111fee);box-shadow:0 0 65px #008cff22}
-h1{font-size:22px;letter-spacing:.19em;margin:0;color:#d5f5ff}
-.card p{font-size:12px;line-height:1.6;color:#b9d0e1}
-#launch{width:190px;height:48px;margin-top:8px;font-size:11px}
-#footer{font-size:9px!important;color:#7796ab!important}
-@media(min-width:700px){#stick{left:28px}.buttons{right:28px;grid-template-columns:repeat(3,76px)}button{height:56px;font-size:10px}.top{left:22px;right:22px}}
-</style>
-</head>
-<body>
-<div id="game"></div>
-<div id="hud">
- <div class="top">
-  <div class="panel"><div class="brand">STARK FLIGHT TEST <span style="color:#75cfff">/ 0.2</span></div><div class="sub">ARMOR <b id="armor">100</b>% · ARC <b id="energy">100</b>%</div></div>
-  <div class="panel"><div id="mission">MISSION 01 · CITY PATROL</div><div id="missionText">Pass through the blue flight gates</div></div>
- </div>
- <div id="message">FLIGHT SYSTEMS STANDBY</div><div id="reticle"></div>
- <div id="controls">
-  <div id="stick"><div id="nub"></div></div>
-  <div class="buttons">
-   <button id="up">ASCEND</button><button id="boost">AFTERBURNER</button><button id="down">DESCEND</button>
-   <button id="hover">HOVER</button><button id="fire">REPULSOR</button><button id="reset">RESTART</button>
-  </div>
- </div>
-</div>
-<div id="start"><div class="card"><h1>STARK FLIGHT TEST</h1><p><b>Build 0.2 · Cinematic flight prototype</b><br>Steer with the left stick. Fly through three blue gates, then engage the hostile drones. Hold AFTERBURNER for speed. Use REPULSOR to fire.</p><button id="launch">INITIALIZE SUIT</button><p id="footer">Mobile-first 3D prototype · Requires internet for Three.js library</p></div></div>
+:root{color-scheme:dark;--cyan:#73e7ff;--gold:#e9bd70;--red:#ff514f}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#030811;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;touch-action:none}canvas{display:block;width:100%;height:100%;touch-action:none}#ui{position:fixed;inset:0;pointer-events:none;color:#eaf8ff}.top{position:absolute;top:max(14px,env(safe-area-inset-top));left:16px;right:16px;display:flex;justify-content:space-between;align-items:flex-start}.brand{font-size:11px;letter-spacing:.28em;color:var(--cyan);font-weight:800}.sub{font-size:9px;letter-spacing:.18em;color:#7893a8;margin-top:4px}.readout{text-align:right;font:10px/1.8 ui-monospace,monospace;color:#b8d5e8}.readout b{color:var(--cyan);font-weight:600}.center{position:absolute;left:50%;top:45%;width:34px;height:34px;transform:translate(-50%,-50%);opacity:.8}.center:before,.center:after{content:"";position:absolute;background:#8cecff;box-shadow:0 0 8px #4bdcff}.center:before{height:1px;width:34px;top:17px}.center:after{width:1px;height:34px;left:17px}.ring{position:absolute;inset:7px;border:1px solid #8cecff;border-radius:50%;opacity:.65}.bottom{position:absolute;left:14px;right:14px;bottom:max(16px,env(safe-area-inset-bottom));display:flex;justify-content:space-between;align-items:flex-end}.hint{font:9px/1.6 ui-monospace,monospace;letter-spacing:.12em;color:#91aabd;max-width:130px}.controls{display:flex;gap:10px;align-items:flex-end}.btn{pointer-events:auto;border:1px solid #76dfff66;background:linear-gradient(145deg,#10283cdd,#07111ddd);color:#c9f6ff;border-radius:50%;width:62px;height:62px;font-size:9px;letter-spacing:.08em;font-weight:800;box-shadow:inset 0 0 18px #36b8e422,0 0 18px #0008;touch-action:none}.btn:active,.btn.on{background:#1a6680aa;border-color:#9af0ff;box-shadow:0 0 20px #38d9ff77}.btn.fire{width:72px;height:72px;border-color:#ff7b6e88;color:#ffd2c7}.btn.boost{border-color:#eac47788;color:#ffe2a5}.joystick{pointer-events:auto;position:relative;width:116px;height:116px;border:1px solid #7bdfff55;border-radius:50%;background:#071b2b77;box-shadow:inset 0 0 22px #41caff18;touch-action:none}.stick{position:absolute;width:46px;height:46px;left:34px;top:34px;border-radius:50%;border:1px solid #9aeaffaa;background:radial-gradient(circle at 35% 30%,#b9f7ff,#24617d);box-shadow:0 0 18px #48cfff66}.meter{position:absolute;left:50%;bottom:120px;transform:translateX(-50%);width:min(230px,48vw);height:3px;background:#183448}.meter>i{display:block;height:100%;width:70%;background:linear-gradient(90deg,#43baff,#b7f7ff);box-shadow:0 0 8px #53dfff}.meterlabel{position:absolute;left:50%;bottom:128px;transform:translateX(-50%);font:8px ui-monospace,monospace;letter-spacing:.2em;color:#9ac3d7;white-space:nowrap}#loading{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse at center,#10283a,#030811 65%);z-index:5;color:#d9f7ff;text-align:center;transition:opacity .5s}#loading.hide{opacity:0;pointer-events:none}.loaderTitle{font-size:13px;letter-spacing:.34em;font-weight:800}.loaderSub{margin-top:10px;font:10px ui-monospace,monospace;color:#8baabd}.bar{height:2px;width:180px;background:#18384b;margin:20px auto 0}.bar i{display:block;height:100%;width:0;background:#6fe7ff;transition:width .3s}#toast{position:absolute;top:24%;left:50%;transform:translateX(-50%);font:10px ui-monospace,monospace;letter-spacing:.18em;color:#9fefff;text-shadow:0 0 10px #29caff;opacity:0;transition:opacity .2s;white-space:nowrap}
+@media(max-width:390px){.joystick{width:98px;height:98px}.stick{left:26px;top:26px}.btn{width:54px;height:54px}.btn.fire{width:64px;height:64px}.controls{gap:7px}}
+</style></head>
+<body><div id="loading"><div><div class="loaderTitle">PROJECT STARK</div><div class="loaderSub" id="loadtext">INITIALIZING FLIGHT SYSTEMS</div><div class="bar"><i id="loadbar"></i></div></div></div><div id="ui"><div class="top"><div><div class="brand">STARK INDUSTRIES</div><div class="sub">MARK 85 // FLIGHT TEST 01</div></div><div class="readout">ALT <b id="alt">120</b> M<br>SPD <b id="spd">0</b> KM/H<br>SYS <b>ONLINE</b></div></div><div class="center"><div class="ring"></div></div><div id="toast">REPULSOR CHARGED</div><div class="meterlabel">ARC REACTOR OUTPUT</div><div class="meter"><i id="energy"></i></div><div class="bottom"><div><div class="joystick" id="joy"><div class="stick" id="stick"></div></div><div class="hint">DRAG TO STEER<br>UP / DOWN TO CLIMB</div></div><div class="controls"><button class="btn boost" id="boost">BOOST</button><button class="btn" id="hover">HOVER</button><button class="btn fire" id="fire">FIRE</button></div></div></div>
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-const $=id=>document.getElementById(id), mount=$('game');
-const scene=new THREE.Scene();scene.background=new THREE.Color(0x8ab8d1);scene.fog=new THREE.Fog(0x9dbdca,95,420);
-const camera=new THREE.PerspectiveCamera(66,innerWidth/innerHeight,.1,900);
-const renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'high-performance'});
-renderer.setPixelRatio(Math.min(devicePixelRatio,1.35));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;mount.appendChild(renderer.domElement);
-scene.add(new THREE.HemisphereLight(0xd8efff,0x37414d,1.65));
-const sun=new THREE.DirectionalLight(0xffe5c3,2.6);sun.position.set(-90,130,70);scene.add(sun);
-const fill=new THREE.DirectionalLight(0x69bfff,1.0);fill.position.set(80,35,-100);scene.add(fill);
-const sky=new THREE.Mesh(new THREE.SphereGeometry(700,24,16),new THREE.MeshBasicMaterial({color:0x9fc5d7,side:THREE.BackSide}));scene.add(sky);
-const groundMat=new THREE.MeshStandardMaterial({color:0x344b59,roughness:.92});
-const ground=new THREE.Mesh(new THREE.PlaneGeometry(900,900),groundMat);ground.rotation.x=-Math.PI/2;ground.position.y=-3;scene.add(ground);
-const grid=new THREE.GridHelper(900,90,0x56717d,0x718b94);grid.position.y=-2.95;grid.material.transparent=true;grid.material.opacity=.18;scene.add(grid);
-const mats=[0x526574,0x697782,0x465b6b,0x7b8588,0x3e5260].map(c=>new THREE.MeshStandardMaterial({color:c,metalness:.25,roughness:.72}));
-const winMats=[0x9ac8d7,0x567d91,0xd5bd91,0x42647b].map(c=>new THREE.MeshBasicMaterial({color:c}));
-const city=new THREE.Group();scene.add(city);
-for(let i=0;i<180;i++){
- let x=(Math.random()-.5)*330,z=(Math.random()-.5)*380;
- if(Math.abs(x)<20&&z>-48&&z<42)continue;
- let w=5+Math.random()*11,d=6+Math.random()*12,h=13+Math.random()*76;
- let b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mats[Math.floor(Math.random()*mats.length)]);
- b.position.set(x,h/2-3,z);city.add(b);
- // sparse window strips, limited draw calls
- const rows=Math.min(10,Math.floor(h/7));
- for(let r=0;r<rows;r++){for(let c=0;c<Math.max(1,Math.floor(w/3));c++){
-  let win=new THREE.Mesh(new THREE.PlaneGeometry(.85,1.15),winMats[Math.floor(Math.random()*winMats.length)]);
-  win.position.set(x-w/2+1.5+c*2.7,2+r*6,z-d/2-.012);city.add(win);
- }}
-}
-// distant skyline silhouettes
-for(let i=0;i<60;i++){let h=20+Math.random()*95,w=8+Math.random()*15,d=8+Math.random()*15;let b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mats[i%5]);b.position.set((Math.random()-.5)*480,h/2-3,-210-Math.random()*140);city.add(b)}
-// rooftop launch pad
-const roof=new THREE.Mesh(new THREE.BoxGeometry(34,2,42),new THREE.MeshStandardMaterial({color:0x344958,metalness:.4,roughness:.65}));roof.position.set(0,-2,10);scene.add(roof);
-const pad=new THREE.Mesh(new THREE.RingGeometry(5.5,6.1,48),new THREE.MeshBasicMaterial({color:0x6ddfff,side:THREE.DoubleSide}));pad.rotation.x=-Math.PI/2;pad.position.set(0,-.97,10);scene.add(pad);
-const gold=new THREE.MeshStandardMaterial({color:0xc99a4c,metalness:.8,roughness:.24}),red=new THREE.MeshStandardMaterial({color:0x8c1f2b,metalness:.72,roughness:.26}),dark=new THREE.MeshStandardMaterial({color:0x172a3a,metalness:.7,roughness:.3}),whiteGlow=new THREE.MeshBasicMaterial({color:0xb9f2ff}),thrusterMat=new THREE.MeshBasicMaterial({color:0x55cfff,transparent:true,opacity:.9});
-const player=new THREE.Group();scene.add(player);player.position.set(0,2,10);
-function mesh(g,m,p,s,par=player){let o=new THREE.Mesh(g,m);o.position.set(...p);if(s)o.scale.set(...s);par.add(o);return o}
-const torso=mesh(new THREE.SphereGeometry(.7,16,12),red,[0,1.35,0],[.85,1.15,.58]);
-mesh(new THREE.SphereGeometry(.28,14,10),gold,[0,2.45,0],[.85,.92,.8]);
-mesh(new THREE.BoxGeometry(.43,.08,.08),whiteGlow,[0,2.48,-.235]);
-mesh(new THREE.SphereGeometry(.2,14,10),whiteGlow,[0,1.35,.53]);
-for(const s of [-1,1]){
- mesh(new THREE.SphereGeometry(.32,12,10),gold,[s*.72,1.5,0],[.9,1.2,.9]);
- mesh(new THREE.CapsuleGeometry(.19,.53,4,8),red,[s*.28,.38,0]);
- mesh(new THREE.CapsuleGeometry(.2,.65,4,8),gold,[s*.77,.7,0]);
- mesh(new THREE.SphereGeometry(.2,10,8),dark,[s*.78,.12,.02]);
-}
-const legs=[];for(const s of [-1,1])legs.push(mesh(new THREE.CapsuleGeometry(.22,.7,4,8),red,[s*.27,.35,0]));
-const jets=[];
-for(const s of [-1,1]){let j=mesh(new THREE.ConeGeometry(.18,1.15,10),thrusterMat,[s*.72,.1,.12]);j.rotation.x=Math.PI;jets.push(j)}
-const handJets=[];for(const s of [-1,1]){let j=mesh(new THREE.ConeGeometry(.12,.55,8),thrusterMat,[s*.98,1.2,.1]);j.rotation.z=s*-.3;j.rotation.x=Math.PI;handJets.push(j)}
-// gates on route
-const gates=[];for(let i=0;i<3;i++){let g=new THREE.Group();let ring=new THREE.Mesh(new THREE.TorusGeometry(4.3,.22,8,36),new THREE.MeshBasicMaterial({color:0x39d9ff}));g.add(ring);let inner=new THREE.Mesh(new THREE.TorusGeometry(3.8,.055,6,36),new THREE.MeshBasicMaterial({color:0xc9f7ff}));g.add(inner);g.position.set([0,8,-38,22][i+1]||0,10+i*4,-42-i*49);g.userData={passed:false};scene.add(g);gates.push(g)}
-// drones
-const drones=[];for(let i=0;i<3;i++){let g=new THREE.Group();let core=new THREE.Mesh(new THREE.OctahedronGeometry(.85),new THREE.MeshStandardMaterial({color:0x263e50,metalness:.85,roughness:.25,emissive:0x12364d}));g.add(core);let eye=new THREE.Mesh(new THREE.SphereGeometry(.22,10,8),new THREE.MeshBasicMaterial({color:0xff583d}));eye.position.z=.72;g.add(eye);for(let k=0;k<4;k++){let arm=new THREE.Mesh(new THREE.BoxGeometry(1.5,.12,.15),gold);arm.rotation.y=k*Math.PI/2;g.add(arm)}g.position.set((i-1)*13,12,-190-i*25);g.userData={alive:true,phase:i*2};scene.add(g);drones.push(g)}
-let stick={x:0,y:0},held={up:false,down:false,boost:false,hover:false,fire:false},bolts=[],energy=100,armor=100,gateIndex=0,lastShot=0,started=false,velocity=new THREE.Vector3(0,0,-.4),yaw=0,pitch=0,roll=0,missionMode='gates',lastTime=0;
-function bind(id,k){let e=$(id);const on=ev=>{ev.preventDefault();held[k]=true;e.classList.add('active')},off=()=>{held[k]=false;e.classList.remove('active')};e.addEventListener('pointerdown',on);['pointerup','pointercancel','pointerleave'].forEach(n=>e.addEventListener(n,off))}
-bind('up','up');bind('down','down');bind('boost','boost');bind('hover','hover');bind('fire','fire');
-const stickEl=$('stick'),nub=$('nub');let pid=null;
-stickEl.addEventListener('pointerdown',e=>{pid=e.pointerId;stickEl.setPointerCapture(pid);moveStick(e)});
-stickEl.addEventListener('pointermove',e=>{if(pid===e.pointerId)moveStick(e)});
-function moveStick(e){let r=stickEl.getBoundingClientRect(),x=(e.clientX-r.left-r.width/2)/43,y=(e.clientY-r.top-r.height/2)/43,l=Math.hypot(x,y);if(l>1){x/=l;y/=l}stick.x=x;stick.y=y;nub.style.transform=`translate(${x*34}px,${y*34}px)`}
-function release(){pid=null;stick.x=stick.y=0;nub.style.transform='translate(0,0)'}
-stickEl.addEventListener('pointerup',release);stickEl.addEventListener('pointercancel',release);
-function reset(){player.position.set(0,2,10);yaw=pitch=roll=0;velocity.set(0,0,-.4);energy=100;armor=100;gateIndex=0;missionMode='gates';gates.forEach(g=>{g.userData.passed=false;g.visible=true});drones.forEach(d=>{d.userData.alive=true;d.visible=true});bolts.forEach(b=>scene.remove(b));bolts=[];$('message').textContent='FLIGHT SYSTEM RESET';}
-$('reset').addEventListener('click',reset);
-function shoot(){let now=performance.now();if(now-lastShot<220||energy<2)return;lastShot=now;energy-=2;let dir=new THREE.Vector3(0,0,-1).applyQuaternion(player.quaternion);let b=new THREE.Mesh(new THREE.SphereGeometry(.16,8,6),new THREE.MeshBasicMaterial({color:0xa9f4ff}));b.position.copy(player.position).add(new THREE.Vector3(0,1.7,0)).addScaledVector(dir,1.4);b.userData={v:dir.multiplyScalar(2.7),life:95};scene.add(b);bolts.push(b)}
-const tmp=new THREE.Vector3(),camTarget=new THREE.Vector3(),camOffset=new THREE.Vector3();
-function update(dt,t){
- const boost=held.boost?1.9:1,desiredSpeed=(held.boost?38:19);
- yaw-=stick.x*dt*1.25;pitch+=-stick.y*dt*1.0;pitch=THREE.MathUtils.clamp(pitch,-.85,.85);
- let vertical=(held.up?1:0)-(held.down?1:0);
- let dir=new THREE.Vector3(0,0,-1).applyEuler(new THREE.Euler(pitch,yaw,0,'YXZ'));
- let targetVel=dir.multiplyScalar(desiredSpeed*boost);if(held.hover){targetVel.multiplyScalar(.12);targetVel.y+=(4.5-player.position.y)*1.6;pitch*=.94}
- targetVel.y+=vertical*13;
- velocity.lerp(targetVel,Math.min(1,dt*(held.hover?4:1.8)));
- player.position.addScaledVector(velocity,dt);
- player.position.y=THREE.MathUtils.clamp(player.position.y,1,95);
- player.position.x=THREE.MathUtils.clamp(player.position.x,-115,115);
- player.rotation.order='YXZ';player.rotation.y=yaw;player.rotation.x=pitch;roll+=( -stick.x*.48-roll)*Math.min(1,dt*3);player.rotation.z=roll;
- jets.forEach(j=>{j.scale.y=held.boost?1.7:.9;j.visible=velocity.length()>2});
- handJets.forEach(j=>j.visible=held.boost||held.up||held.down);
- if(held.fire)shoot();energy=Math.min(100,energy+dt*2.1);
- gates.forEach((g,i)=>{if(!g.userData.passed){g.rotation.z+=dt*.35;g.rotation.y+=dt*.15;if(player.position.distanceTo(g.position)<5.2){g.userData.passed=true;g.visible=false;gateIndex++;$('message').textContent='FLIGHT GATE '+gateIndex+' / 3 CLEARED';if(gateIndex===3){missionMode='combat';$('mission').textContent='MISSION 02 · HOSTILE CONTACT';$('missionText').textContent='Disable all hostile drones';}}}});
- drones.forEach((d,i)=>{if(!d.userData.alive)return;d.position.y=12+Math.sin(t*.0014+d.userData.phase)*2.2;d.position.x+=(Math.sin(t*.00055+i)*.3);d.rotation.y+=dt*.8});
- for(let i=bolts.length-1;i>=0;i--){let b=bolts[i];b.position.addScaledVector(b.userData.v,dt*60);b.userData.life--;let hit=false;for(let d of drones){if(d.userData.alive&&b.position.distanceTo(d.position)<2){d.userData.alive=false;d.visible=false;hit=true;break}}if(hit||b.userData.life<0){scene.remove(b);bolts.splice(i,1)}}
- if(missionMode==='combat'&&drones.every(d=>!d.userData.alive)){$('mission').textContent='MISSION COMPLETE';$('missionText').textContent='All hostiles neutralized';$('message').textContent='STARK FLIGHT TEST · COMPLETE'}
- $('energy').textContent=Math.round(energy);$('armor').textContent=Math.round(armor);
- $('missionText').textContent=missionMode==='gates'?`Flight gates: ${gateIndex}/3`:$('missionText').textContent;
- // subtle atmospheric follow camera: chase distance expands with speed and banks into turns
- let speed=velocity.length(),dist=THREE.MathUtils.lerp(12,21,Math.min(1,speed/42));
- camOffset.set(0,4.5,dist).applyEuler(new THREE.Euler(pitch*.18,yaw,0,'YXZ'));
- camTarget.copy(player.position).add(new THREE.Vector3(0,1.3,0));
- tmp.copy(camTarget).add(camOffset);camera.position.lerp(tmp,Math.min(1,dt*3.2));camera.lookAt(camTarget.clone().addScaledVector(velocity,.22));
- camera.fov=THREE.MathUtils.lerp(camera.fov,held.boost?78:66,Math.min(1,dt*2));camera.updateProjectionMatrix();
- // keep city in view around player, no teleporting geometry
-}
-function animate(now){requestAnimationFrame(animate);let dt=Math.min(.04,(now-(lastTime||now))/1000);lastTime=now;if(started)update(dt,now);renderer.render(scene,camera)}
-requestAnimationFrame(animate);
-$('launch').addEventListener('click',()=>{$('start').style.display='none';started=true;$('message').textContent='SUIT ONLINE · PASS THROUGH THE FLIGHT GATES'});
-addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.35))});
-</script>
-</body></html>
+import { FBXLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/FBXLoader.js';
+const $=id=>document.getElementById(id);let scene,camera,renderer,clock,iron,world=[],shots=[],particles=[],speed=0,altitude=120,boosting=false,hovering=false,energy=100;let steer={x:0,y:0},joyActive=false,joyId=null,lastShot=0;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function setLoad(t,p){$('loadtext').textContent=t;$('loadbar').style.width=p+'%'}
+function makeFallback(){const g=new THREE.Group();const red=new THREE.MeshStandardMaterial({color:0x9f1c22,metalness:.8,roughness:.27}),gold=new THREE.MeshStandardMaterial({color:0xc69a4d,metalness:.85,roughness:.22}),glow=new THREE.MeshBasicMaterial({color:0x5feaff});function part(geo,mat,pos,scale){const m=new THREE.Mesh(geo,mat);m.position.set(...pos);m.scale.set(...scale);g.add(m);return m}part(new THREE.CapsuleGeometry(.36,.9,6,10),red,[0,0,0],[1,1,1]);part(new THREE.SphereGeometry(.29,16,12),gold,[0,.78,0],[1.05,1.1,.9]);part(new THREE.BoxGeometry(.36,.35,.14),glow,[0,.12,.36],[1,1,1]);for(let s of [-1,1]){part(new THREE.CapsuleGeometry(.13,.65,4,8),red,[s*.53,.15,0],[1,1,1]);part(new THREE.CapsuleGeometry(.12,.62,4,8),red,[s*.22,-.9,0],[1,1,1]);part(new THREE.SphereGeometry(.12,12,8),glow,[s*.53,-.2,.08],[1,1,1]);}g.scale.setScalar(1.5);return g}
+function init(){scene=new THREE.Scene();scene.background=new THREE.Color(0x071523);scene.fog=new THREE.FogExp2(0x071523,.0028);camera=new THREE.PerspectiveCamera(62,innerWidth/innerHeight,.1,1800);camera.position.set(0,3.5,9);renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;document.body.prepend(renderer.domElement);clock=new THREE.Clock();scene.add(new THREE.HemisphereLight(0x9ddfff,0x17202c,2));const sun=new THREE.DirectionalLight(0xffe5c2,2.5);sun.position.set(-80,150,70);scene.add(sun);const fill=new THREE.PointLight(0x38cfff,65,120);fill.position.set(0,4,4);scene.add(fill);const grid=new THREE.GridHelper(1800,90,0x16415a,0x0d293b);grid.position.y=-30;scene.add(grid);makeCity();loadIron();window.addEventListener('resize',resize);bindControls();animate()}
+function makeCity(){const mat1=new THREE.MeshStandardMaterial({color:0x172b3b,metalness:.55,roughness:.65}),mat2=new THREE.MeshStandardMaterial({color:0x20394a,metalness:.45,roughness:.7}),win=new THREE.MeshBasicMaterial({color:0x4d9eb6});for(let z=-100;z>-900;z-=55){for(let x=-260;x<=260;x+=55){if(Math.abs(x)<38)continue;const h=25+Math.random()*115,w=18+Math.random()*18,d=18+Math.random()*18;const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),Math.random()>.5?mat1:mat2);b.position.set(x,h/2-20,z-Math.random()*25);scene.add(b);world.push(b);if(Math.random()>.35){const panel=new THREE.Mesh(new THREE.BoxGeometry(w*.72,.18,.12),win);panel.position.set(x,h*.62-20,z-d/2-.08);scene.add(panel);world.push(panel)}}}const ground=new THREE.Mesh(new THREE.PlaneGeometry(1800,1800),new THREE.MeshStandardMaterial({color:0x091522,metalness:.25,roughness:.9}));ground.rotation.x=-Math.PI/2;ground.position.y=-25;ground.position.z=-400;scene.add(ground)}
+function loadIron(){setLoad('LOADING MARK 85 ASSET',24);const manager=new THREE.LoadingManager();manager.setURLModifier(url=>{const name=decodeURIComponent(url.split('/').pop().split('\\').pop());return /\.(png|jpg|jpeg|tga)$/i.test(name)?'./textures/'+name:url});const loader=new FBXLoader(manager);loader.load('./source/Og.fbx',obj=>{iron=obj;const box=new THREE.Box3().setFromObject(iron);const size=box.getSize(new THREE.Vector3());const center=box.getCenter(new THREE.Vector3());iron.position.sub(center);const s=3.5/Math.max(size.y,size.x,size.z);iron.scale.setScalar(s);iron.rotation.y=Math.PI;iron.traverse(o=>{if(o.isMesh){o.castShadow=false;o.frustumCulled=true;if(o.material){const mats=Array.isArray(o.material)?o.material:[o.material];mats.forEach(m=>{m.metalness=Math.max(m.metalness||0,.55);m.roughness=clamp(m.roughness||.4,.2,.7);if(m.emissiveMap){m.emissive=new THREE.Color(0x55dfff);m.emissiveIntensity=1.6}})}}});scene.add(iron);iron.position.set(0,0,0);setLoad('MARK 85 ONLINE',100);finishLoad()},undefined,e=>{console.warn('FBX load failed',e);iron=makeFallback();scene.add(iron);setLoad('FLIGHT SYSTEMS ONLINE',100);finishLoad()})}
+function finishLoad(){setTimeout(()=>$('loading').classList.add('hide'),450)}
+function resize(){camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)}
+function bindControls(){const joy=$('joy'),stick=$('stick');function move(e){const r=joy.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,dx=e.clientX-cx,dy=e.clientY-cy,max=r.width*.34,len=Math.hypot(dx,dy),k=Math.min(1,max/(len||1));steer.x=dx*k/max;steer.y=-dy*k/max;stick.style.transform=`translate(${dx*k}px,${dy*k}px)`}joy.addEventListener('pointerdown',e=>{joyActive=true;joyId=e.pointerId;joy.setPointerCapture(e.pointerId);move(e)});joy.addEventListener('pointermove',e=>{if(joyActive&&e.pointerId===joyId)move(e)});function end(e){if(e.pointerId!==joyId)return;joyActive=false;joyId=null;steer={x:0,y:0};stick.style.transform='translate(0,0)'}joy.addEventListener('pointerup',end);joy.addEventListener('pointercancel',end);$('boost').addEventListener('pointerdown',()=>boosting=true);['pointerup','pointercancel','pointerleave'].forEach(ev=>$('boost').addEventListener(ev,()=>boosting=false));$('hover').addEventListener('click',()=>{hovering=!hovering;$('hover').classList.toggle('on',hovering);toast(hovering?'HOVER MODE ENGAGED':'HOVER MODE OFF')});$('fire').addEventListener('pointerdown',fire);window.addEventListener('keydown',e=>{if(e.code==='Space')boosting=true;if(e.code==='KeyF')fire();if(e.code==='KeyH')hovering=!hovering;if(e.code==='ArrowLeft'||e.code==='KeyA')steer.x=-1;if(e.code==='ArrowRight'||e.code==='KeyD')steer.x=1;if(e.code==='ArrowUp'||e.code==='KeyW')steer.y=1;if(e.code==='ArrowDown'||e.code==='KeyS')steer.y=-1});window.addEventListener('keyup',e=>{if(e.code==='Space')boosting=false;if(['ArrowLeft','ArrowRight','KeyA','KeyD'].includes(e.code))steer.x=0;if(['ArrowUp','ArrowDown','KeyW','KeyS'].includes(e.code))steer.y=0})}
+function toast(t){$('toast').textContent=t;$('toast').style.opacity=1;clearTimeout(toast.t);toast.t=setTimeout(()=>$('toast').style.opacity=0,900)}
+function fire(){const now=performance.now();if(now-lastShot<180||energy<4)return;lastShot=now;energy=Math.max(0,energy-4);const origin=new THREE.Vector3(0,.2,-.2);if(iron)origin.applyMatrix4(iron.matrixWorld);else origin.set(0,0,0);const dir=new THREE.Vector3(steer.x*.18,steer.y*.18,-1).normalize();const m=new THREE.Mesh(new THREE.SphereGeometry(.09,8,8),new THREE.MeshBasicMaterial({color:0x7deeff}));m.position.copy(origin);scene.add(m);shots.push({mesh:m,vel:dir.multiplyScalar(5),life:90});toast('REPULSOR FIRED')}
+function addThruster(pos){const light=new THREE.PointLight(0x3bdcff,2.2,7);light.position.copy(pos);scene.add(light);const geo=new THREE.BufferGeometry();const pts=[];for(let i=0;i<12;i++)pts.push((Math.random()-.5)*.16,-Math.random()*.9,(Math.random()-.5)*.16);geo.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));const p=new THREE.Points(geo,new THREE.PointsMaterial({color:0x76eaff,size:.09,transparent:true,opacity:.8}));p.position.copy(pos);scene.add(p);particles.push({mesh:p,light,life:10+Math.random()*8})}
+function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);const target=boosting?1:hovering?0:.45;speed=THREE.MathUtils.damp(speed,target,boosting?2.8:1.5,dt);if(!hovering)altitude=clamp(altitude+steer.y*dt*24,35,260);else altitude=THREE.MathUtils.damp(altitude,120,2,dt);if(iron){iron.position.x=THREE.MathUtils.damp(iron.position.x,steer.x*3.8,3.8,dt);iron.position.y=THREE.MathUtils.damp(iron.position.y,(altitude-120)*.025,3.8,dt);iron.rotation.z=THREE.MathUtils.damp(iron.rotation.z,-steer.x*.28,4,dt);iron.rotation.x=THREE.MathUtils.damp(iron.rotation.x,steer.y*.12,3,dt);iron.position.z=0;iron.updateMatrixWorld(true);if(Math.random()<.55){const p=new THREE.Vector3(-.35,-1.2,-.1).applyMatrix4(iron.matrixWorld);addThruster(p);const q=new THREE.Vector3(.35,-1.2,-.1).applyMatrix4(iron.matrixWorld);addThruster(q)}}camera.position.x=THREE.MathUtils.damp(camera.position.x,(iron?iron.position.x:0)*.55,2.5,dt);camera.position.y=THREE.MathUtils.damp(camera.position.y,3.3+steer.y*.5,2.3,dt);camera.position.z=THREE.MathUtils.damp(camera.position.z,9.5+(boosting?1.8:0),2,dt);camera.lookAt(iron?iron.position.clone().add(new THREE.Vector3(0,.2,-5)):new THREE.Vector3(0,0,-5));for(const b of world){b.position.z+=speed*dt*100;if(b.position.z>35)b.position.z-=825}for(let i=shots.length-1;i>=0;i--){const s=shots[i];s.mesh.position.addScaledVector(s.vel,dt*60);s.life--;if(s.life<=0){scene.remove(s.mesh);s.mesh.geometry.dispose();shots.splice(i,1)}}for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.life-=dt*60;p.mesh.position.y-=dt*1.2;p.mesh.material.opacity=clamp(p.life/12,0,1);p.light.intensity=clamp(p.life/10,0,2);if(p.life<=0){scene.remove(p.mesh,p.light);p.mesh.geometry.dispose();particles.splice(i,1)}}energy=clamp(energy+(boosting?-dt*9:dt*5),0,100);$('energy').style.width=energy+'%';$('alt').textContent=Math.round(altitude);$('spd').textContent=Math.round(speed*(boosting?720:460));renderer.render(scene,camera)}
+init();
+</script></body></html>
