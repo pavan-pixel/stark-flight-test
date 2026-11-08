@@ -203,6 +203,35 @@ canvas{touch-action:none;-webkit-user-select:none;user-select:none}
 #starkIntro.leave img{opacity:0;transform:scale(1.08)}
 @keyframes reactorPulse{from{filter:brightness(1);box-shadow:0 0 25px 12px #62eaff99,0 0 70px 30px #168dff55}to{filter:brightness(1.8);box-shadow:0 0 42px 22px #a6f8ffdd,0 0 130px 65px #168dff99}}
 @media(prefers-reduced-motion:reduce){#starkIntro img,#starkIntro:after{transition-duration:.2s;animation:none}}
+
+/* NYC deployment terminal / cinematic Stark presentation */
+#mainmenu{background:radial-gradient(ellipse at 51% 42%,#163b55aa 0%,#07121feF 46%,#03070d 100%);isolation:isolate}
+#mainmenu:before{content:"";position:absolute;inset:0;z-index:-1;opacity:.32;background:linear-gradient(90deg,transparent 49.8%,#80dfff22 50%,transparent 50.2%),linear-gradient(0deg,transparent 49.8%,#80dfff18 50%,transparent 50.2%),repeating-linear-gradient(0deg,transparent 0 42px,#9feaff0b 43px),repeating-linear-gradient(90deg,transparent 0 42px,#9feaff0b 43px)}
+#mainmenu:after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(90deg,#02060bd9 0%,transparent 22%,transparent 78%,#02060bd9 100%),linear-gradient(0deg,#02060bcc,transparent 25%,transparent 80%,#02060b99)}
+.databaseTop,.databaseBottom{border-color:#7bdcff55;color:#9bc5d7;text-shadow:0 0 12px #42cfff44}
+.databaseLayout{position:relative}
+.databaseNav,.jarvisPanel{background:linear-gradient(145deg,#0b2030dd,#07111beF);border:1px solid #75dfff55;box-shadow:0 18px 50px #0008,inset 0 1px #d9faff12;backdrop-filter:blur(18px)}
+.databaseNav{border-left:2px solid #51d7ff}
+.dbTab{border:1px solid #76dfff22;background:linear-gradient(90deg,#102c3eaa,#07121b88);color:#b8dce9;transition:all .2s ease}
+.dbTab.active,.dbTab:focus-visible{border-color:#9ceeff;color:#f2fdff;background:linear-gradient(90deg,#1c5a76dd,#10283c);box-shadow:0 0 22px #32caff33,inset 3px 0 #8beaff}
+.databaseHero{position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% 48%,#2c9acb44,#0b1c2caa 44%,#030912ee 100%);border:1px solid #8beaff55;box-shadow:0 0 45px #28bfff18,inset 0 0 50px #4fcfff12}
+.databaseHero:before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent 0 5px,#8deaff0b 6px),linear-gradient(120deg,transparent 25%,#8deaff0c 50%,transparent 75%);pointer-events:none}
+.databaseHero:after{content:"";position:absolute;left:50%;top:48%;width:min(22vw,210px);aspect-ratio:1;border:1px solid #80eaff44;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 12px #63dfff0b,0 0 0 28px #63dfff08,0 0 42px #37cfff33;pointer-events:none}
+.heroTitle{color:#e8faff;text-shadow:0 0 25px #56dfff66;letter-spacing:.12em}
+.heroTitle b{color:#f0c982}
+.heroReticle{border-color:#b5f4ff;background:radial-gradient(circle,#fff 0%,#8deaff 12%,#168ecb55 35%,transparent 70%);box-shadow:0 0 22px #66eaff,0 0 70px #149fff77;animation:reactorBreath 2.8s ease-in-out infinite}
+.heroBottom{border-top:1px solid #8beaff55;color:#a9d8e8}
+.jarvisHeader{color:#bdf5ff}
+.jarvisDot{box-shadow:0 0 12px #61eaff}
+.jarvisTitle{color:#effcff;text-shadow:0 0 18px #56cfff55;letter-spacing:.06em}
+.jarvisText{color:#b2c9d6}
+.missionPicker select{border-color:#7bdcff88;background:#071a29;color:#d9f8ff;border-radius:3px}
+.menuBtn{border:1px solid #8beaff66;background:linear-gradient(140deg,#12344a,#07131e);color:#d9f8ff;letter-spacing:.14em;box-shadow:0 8px 24px #0006,inset 0 1px #ffffff12}
+.menuBtn.primary{background:linear-gradient(120deg,#167da5,#0b324c);border-color:#a9f0ff;color:#fff;box-shadow:0 0 26px #28bfff44}
+.menuBtn:active{transform:scale(.98)}
+@keyframes reactorBreath{0%,100%{filter:brightness(.82);box-shadow:0 0 18px #66eaff99,0 0 48px #149fff33}50%{filter:brightness(1.35);box-shadow:0 0 32px #a8f8ffdd,0 0 86px #149fff77}}
+@media(prefers-reduced-motion:reduce){.heroReticle{animation:none}}
+
 </style>
 </head>
 <body>
