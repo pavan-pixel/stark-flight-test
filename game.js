@@ -66,7 +66,7 @@ class AssetManager {
     let i = 0;
     await Promise.all(names.map(async n => {
       try {
-        const r = await fetch('./' + n + '?v=m2'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
+        const r = await fetch('./' + n + '?v=m3'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
         const z = await JSZip.loadAsync(await r.arrayBuffer());
         for (const f of Object.values(z.files)) if (!f.dir) this.entries.set(lc(base(f.name)), f);
         this._ok(n);
@@ -440,6 +440,27 @@ const PARTS = {
 };
 const key = s => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
 
+// The clip files use UE Mannequin bone names; Og.fbx uses Mixamo names. Map them so tracks bind.
+const UE_TO_MIXAMO = {
+  pelvis: 'Hips', spine_01: 'Spine', spine_02: 'Spine1', spine_03: 'Spine2', neck_01: 'Neck', head: 'Head',
+  clavicle_l: 'LeftShoulder', clavicle_r: 'RightShoulder', upperarm_l: 'LeftArm', upperarm_r: 'RightArm',
+  lowerarm_l: 'LeftForeArm', lowerarm_r: 'RightForeArm', hand_l: 'LeftHand', hand_r: 'RightHand',
+  thigh_l: 'LeftUpLeg', thigh_r: 'RightUpLeg', calf_l: 'LeftLeg', calf_r: 'RightLeg',
+  foot_l: 'LeftFoot', foot_r: 'RightFoot', ball_l: 'LeftToeBase', ball_r: 'RightToeBase',
+};
+// boneKeys: Map of lowercase Mixamo short name ("hips") -> exact node name in the hero rig.
+function retargetClip(clip, boneKeys) {
+  const tracks = [];
+  for (const t of clip.tracks) {
+    const i = t.name.lastIndexOf('.'); if (i < 0) continue;
+    const ue = t.name.slice(0, i).split(/[|:]/).pop(), prop = t.name.slice(i);
+    const mix = UE_TO_MIXAMO[ue], target = mix && boneKeys.get(mix.toLowerCase());
+    if (!target) continue;
+    t.name = target + prop; tracks.push(t);
+  }
+  return new THREE.AnimationClip(clip.name, clip.duration, tracks);
+}
+
 class IronMan {
   constructor(assets, perf) {
     this.assets = assets; this.perf = perf;
@@ -519,20 +540,20 @@ class IronMan {
     for (const s of [-1, 1]) { add(new THREE.CapsuleGeometry(.13, .65, 4, 8), red, [s * .53, 1.15, 0]); add(new THREE.CapsuleGeometry(.12, .62, 4, 8), red, [s * .22, .4, 0]); }
   }
 
-  // Mixamo-style clips share bone names with Og.fbx, so they drive the rig directly.
-  async _loadAnimations(obj) {
+    async _loadAnimations(obj) {
     this.mixer = new THREE.AnimationMixer(obj); this.actions = {}; this.current = null;
+    const boneKeys = new Map(); obj.traverse(o => { if (o.isBone) boneKeys.set(o.name.replace(/^mixamorig:?/, '').toLowerCase(), o.name); });
     const files = { idle: 'Idle_relaxed.fbx', walk: 'Walk_forwards.fbx', run: 'Run_sprint.fbx', fly: 'Jump_in_the_air.fbx' };
     await Promise.all(Object.entries(files).map(async ([k, f]) => {
       try {
         const o = await this.assets.loadFBX(f);
-        const clip = o.animations && o.animations[0];
-        if (clip) { const a = this.mixer.clipAction(clip); a.setLoop(THREE.LoopRepeat); a.play(); a.setEffectiveWeight(0); this.actions[k] = a; }
+        const raw = o.animations && o.animations[0];
+        const clip = raw && retargetClip(raw, boneKeys);
+        if (clip && clip.tracks.length) { const a = this.mixer.clipAction(clip); a.setLoop(THREE.LoopRepeat); a.play(); a.setEffectiveWeight(0); this.actions[k] = a; }
       } catch (e) { this.assets.onError('ANIM ' + f + ': ' + (e.message || e)); }
     }));
     const n = Object.keys(this.actions).length;
     this.assets.onStatus(n, 0);
-    const tag = document.getElementById('assetstat'); if (tag) tag.textContent = 'ANIM ' + n + '/4 · M2';
     if (n < 4) this.assets.onError('ANIM: only ' + n + '/4 clips loaded');
     this.play('idle');
   }
