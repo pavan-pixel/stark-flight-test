@@ -1229,6 +1229,7 @@ class StoryMission {
 
 // ===== main.js =====
 
+let gameStarted = false;
 const hud = new HUD();
 const failures = [];
 async function boot() {
@@ -1271,14 +1272,15 @@ async function boot() {
 
   hud.on('fly', () => { if (move.takeoff()) { hud.setFlightUI(true); cam.bump(0.05); cine.trigger('TAKEOFF', 1.7); hud.toast('TAKEOFF — THRUSTERS ENGAGED'); } });
   hud.on('land', () => { if (move.land()) { cine.trigger('LANDING', 2.0); hud.toast('LANDING'); } });
-  hud.on('cine', () => { const on=cine.toggle(); hud.toast(on?'CINEMATIC CAMERA':'MANUAL CAMERA'); });
+  hud.on('start', () => { gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); cine.enabled = false; });
+  hud.on('tutorial', () => document.getElementById('tutorial').classList.toggle('show'));
   hud.on('cine', () => { const on=cine.toggle(); hud.toast(on?'CINEMATIC CAMERA':'MANUAL CAMERA'); });
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   hud.on('fire', () => {
-    if (!move.flying) return;
+    if (!gameStarted || !move.flying) return;
     dir.set(-Math.sin(cam.yaw), -Math.sin(cam.pitch) * 0.3, -Math.cos(cam.yaw)).normalize();
     const o = [hero.worldPosOf('lHand', new THREE.Vector3()), hero.worldPosOf('rHand', new THREE.Vector3())];
-    if (rep.fire(o, dir)) cam.bump(0.03);
+    if (rep.fire(o, dir)) { cam.bump(0.08); hero.firePulse = 0.16; }
   });
 
   const clock = new THREE.Clock();
@@ -1286,6 +1288,7 @@ async function boot() {
     requestAnimationFrame(frame);
     const dt = Math.min(clock.getDelta(), 0.05);
     perf.frame(dt);
+    if (!gameStarted) { cine.update(dt, move); hero.root.position.copy(move.pos); city.update(move.pos); traffic.update(dt, move.pos); sm.render(move.pos, {}); return; }
     const inp = { x: hud.steer.x, y: hud.steer.y, run: hud.input.run, boost: hud.input.boost && move.mode === MODE.FLY && rep.energy > 1, hover: hud.input.hover, up: hud.input.up, down: hud.input.down };
     move.update(dt, inp, cam.yaw, city);
     if (move.landed) { move.landed = false; hud.setFlightUI(false); hud.toast('LANDED — WALK MODE'); cam.bump(0.06); }
@@ -1299,7 +1302,7 @@ async function boot() {
     city.update(move.pos);
     traffic.update(dt, move.pos);
     rep.update(dt, inp.boost, mission, hud); mission.update(dt, hud); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
-    cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed }); cine.update(dt, move);
+    if (cine.enabled) cine.update(dt, move); else cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed });
     hud.readout(move.mode, move.pos.y, move.speed * 3.6, rep.energy);
     sm.render(move.pos, { speed: move.speed, boost: inp.boost });
   })();
