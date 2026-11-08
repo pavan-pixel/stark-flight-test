@@ -139,6 +139,20 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #ui .btn{height:43px;min-width:58px;padding:0 6px;font-size:8px;letter-spacing:.06em}
 @media(max-height:440px){.missionPicker{margin-top:6px}.missionPicker select{padding:6px}.helmetTop,.helmetBottom{padding:7px 0}}
 
+
+/* Mission deployment and combat HUD */
+.missionPicker{display:flex;align-items:center;gap:10px;margin-top:14px;color:#b56b6d;font:8px ui-monospace,monospace;letter-spacing:.14em;flex-wrap:wrap}
+.missionPicker select{background:#160d16;color:#f0dfe1;border:1px solid #a74b4e;padding:9px 12px;font:9px ui-monospace,monospace;letter-spacing:.08em;min-width:165px}
+#helmetHud{position:absolute;inset:0;pointer-events:none;display:none;color:#a8f2ff;font:9px ui-monospace,monospace;letter-spacing:.14em;text-shadow:0 0 8px #4adfff;z-index:7}
+#helmetHud.active{display:block}
+.helmetTop,.helmetBottom{position:absolute;left:5%;right:5%;display:flex;justify-content:space-between;border-bottom:1px solid #69ddff55;padding:12px 0}
+.helmetTop{top:max(14px,env(safe-area-inset-top))}.helmetBottom{bottom:16px;border-top:1px solid #69ddff55;border-bottom:0}
+.helmetReticle{position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);width:46px;height:46px;border:1px solid #8ceeff88;border-radius:50%;display:grid;place-items:center;font-size:20px}
+#ui .controls{grid-template-columns:repeat(3,minmax(54px,68px));max-width:222px;gap:6px}
+#ui .btn{height:42px;min-width:54px;padding:0 5px;font-size:8px;letter-spacing:.05em}
+#healthValue,#helmetEnergy,#targetStatus{color:#f4d58c}
+@media(max-height:440px){.missionPicker{margin-top:6px}.missionPicker select{padding:6px}.helmetTop,.helmetBottom{padding:7px 0}#ui .btn{height:37px}}
+
 </style>
 </head>
 <body>
@@ -210,5 +224,5 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
  document.addEventListener('touchmove',function(e){e.preventDefault()},{passive:false});
 })();
 </script>
-<script type="module" src="./game.js?v=m42"></script>
+<script type="module" src="./game.js?v=m43"></script>
 </body></html>
