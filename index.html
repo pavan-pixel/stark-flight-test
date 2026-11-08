@@ -4,16 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#050a12">
-<title>PROJECT STARK — Walk / Fly Update</title>
+<title>PROJECT STARK — Mark 85</title>
 <style>
 :root{color-scheme:dark;--cyan:#73e7ff;--gold:#e9bd70}
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#030811;font-family:Inter,system-ui,sans-serif;touch-action:none}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#030811;font-family:Inter,system-ui,sans-serif;touch-action:none}
 canvas{display:block;width:100%;height:100%;touch-action:none}
+[hidden]{display:none!important}
 #rotate{display:none;position:fixed;inset:0;z-index:20;background:#030811;color:#bff5ff;align-items:center;justify-content:center;text-align:center;padding:30px;font:12px ui-monospace,monospace;letter-spacing:.14em}
-#ui{position:fixed;inset:0;pointer-events:none;color:#eaf8ff}.top{position:absolute;top:max(12px,env(safe-area-inset-top));left:15px;right:15px;display:flex;justify-content:space-between}
+#ui{position:fixed;inset:0;pointer-events:none;color:#eaf8ff}
+.top{position:absolute;top:max(12px,env(safe-area-inset-top));left:max(15px,env(safe-area-inset-left));right:max(15px,env(safe-area-inset-right));display:flex;justify-content:space-between}
 .brand{font-size:11px;letter-spacing:.28em;color:var(--cyan);font-weight:800}.sub{font-size:9px;letter-spacing:.15em;color:#7893a8;margin-top:4px}
 .readout{text-align:right;font:10px/1.8 ui-monospace,monospace;color:#b8d5e8}.readout b{color:var(--cyan)}
-.bottom{position:absolute;left:14px;right:14px;bottom:max(14px,env(safe-area-inset-bottom));display:flex;justify-content:space-between;align-items:flex-end}
+.bottom{position:absolute;left:max(14px,env(safe-area-inset-left));right:max(14px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));display:flex;justify-content:space-between;align-items:flex-end}
 .joystick{pointer-events:auto;position:relative;width:112px;height:112px;border:1px solid #7bdfff66;border-radius:50%;background:#071b2b99;touch-action:none}
 .stick{position:absolute;width:44px;height:44px;left:33px;top:33px;border-radius:50%;border:1px solid #9aeaff;background:radial-gradient(circle at 35% 30%,#b9f7ff,#24617d);box-shadow:0 0 18px #48cfff66}
 .hint{font:9px/1.6 ui-monospace,monospace;letter-spacing:.1em;color:#91aabd;margin-top:7px}
@@ -21,38 +24,39 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 .btn{pointer-events:auto;border:1px solid #76dfff77;background:linear-gradient(145deg,#10283cee,#07111dee);color:#c9f6ff;border-radius:50%;width:58px;height:58px;font-size:9px;letter-spacing:.06em;font-weight:800;touch-action:none}
 .btn:active,.btn.on{background:#1a6680;border-color:#9af0ff;box-shadow:0 0 20px #38d9ff77}.gold{border-color:#eac477;color:#ffe2a5}.red{border-color:#ff7b6e;color:#ffd2c7}
 #loading{position:fixed;inset:0;z-index:10;display:grid;place-items:center;background:radial-gradient(ellipse at center,#10283a,#030811 65%);color:#d9f7ff;text-align:center;transition:opacity .5s}
-#loading.hide{opacity:0;pointer-events:none}.loaderTitle{font-size:13px;letter-spacing:.34em;font-weight:800}.loaderSub{margin-top:10px;font:10px ui-monospace,monospace;color:#8baabd}.bar{height:2px;width:180px;background:#18384b;margin:20px auto 0}.bar i{display:block;height:100%;width:0;background:#6fe7ff}
-#toast{position:absolute;top:20%;left:50%;transform:translateX(-50%);font:10px ui-monospace,monospace;letter-spacing:.16em;color:#9fefff;text-shadow:0 0 10px #29caff;opacity:0;white-space:nowrap}
+#loading.hide{opacity:0;pointer-events:none}.loaderTitle{font-size:13px;letter-spacing:.34em;font-weight:800}.loaderSub{margin-top:10px;font:10px ui-monospace,monospace;color:#8baabd}
+.bar{height:2px;width:180px;background:#18384b;margin:20px auto 0}.bar i{display:block;height:100%;width:0;background:#6fe7ff;transition:width .2s}
+#errors{margin-top:14px;font:9px/1.5 ui-monospace,monospace;color:#ff9b91;max-width:70vw}
+#toast{position:absolute;top:20%;left:50%;transform:translateX(-50%);font:10px ui-monospace,monospace;letter-spacing:.16em;color:#9fefff;text-shadow:0 0 10px #29caff;opacity:0;white-space:nowrap;transition:opacity .25s}
 @media(orientation:portrait){#rotate{display:flex}}
-@media(max-width:420px){.joystick{width:96px;height:96px}.stick{left:26px;top:26px}.btn{width:51px;height:51px}.controls{gap:6px}}
+@media(max-height:420px){.joystick{width:96px;height:96px}.stick{left:26px;top:26px}.btn{width:50px;height:50px}.controls{gap:6px}}
 </style>
 </head>
 <body>
 <div id="rotate"><div><div style="font-size:36px;margin-bottom:16px">↻</div>ROTATE YOUR PHONE TO LANDSCAPE<br><small style="display:block;margin-top:12px;color:#7893a8">PROJECT STARK IS BUILT FOR WIDE SCREEN</small></div></div>
-<div id="loading"><div><div class="loaderTitle">PROJECT STARK</div><div class="loaderSub" id="loadtext">INITIALIZING SYSTEMS</div><div class="bar"><i id="loadbar"></i></div></div></div>
+<div id="loading"><div><div class="loaderTitle">PROJECT STARK</div><div class="loaderSub" id="loadtext">INITIALIZING SYSTEMS</div><div class="bar"><i id="loadbar"></i></div><div id="errors"></div></div></div>
 <div id="ui">
- <div class="top"><div><div class="brand">STARK INDUSTRIES</div><div class="sub">MARK 85 // WALK / FLIGHT TEST</div></div><div class="readout">MODE <b id="mode">WALK</b><br>ALT <b id="alt">GROUND</b><br>SPD <b id="spd">0</b></div></div>
- <div id="toast">MARK 85 ONLINE</div>
- <div class="bottom"><div><div class="joystick" id="joy"><div class="stick" id="stick"></div></div><div class="hint">LEFT / RIGHT · MOVE<br>UP / DOWN · FORWARD / BACK</div></div>
+ <div class="top"><div><div class="brand">STARK INDUSTRIES</div><div class="sub">MARK 85 // OPEN CITY BUILD</div><div class="sub" id="assetstat"></div></div>
+  <div class="readout">MODE <b id="mode">WALK</b><br>ALT <b id="alt">GROUND</b><br>SPD <b id="spd">0</b><br>NRG <b id="nrg">100</b></div></div>
+ <div id="toast"></div>
+ <div class="bottom"><div><div class="joystick" id="joy"><div class="stick" id="stick"></div></div><div class="hint">MOVE RELATIVE TO CAMERA<br>SWIPE ANYWHERE · LOOK</div></div>
  <div class="controls">
   <button class="btn" id="run">RUN</button><button class="btn gold" id="fly">FLY</button>
-  <button class="btn" id="land" style="display:none">LAND</button><button class="btn" id="hover" style="display:none">HOVER</button>
-  <button class="btn gold" id="boost" style="display:none">BOOST</button><button class="btn red" id="fire" style="display:none">FIRE</button>
+  <button class="btn" id="up" hidden>UP</button><button class="btn" id="down" hidden>DOWN</button>
+  <button class="btn gold" id="land" hidden>LAND</button><button class="btn" id="hover" hidden>HOVER</button>
+  <button class="btn gold" id="boost" hidden>BOOST</button><button class="btn red" id="fire" hidden>FIRE</button>
  </div></div>
 </div>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
-
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script>
 (function(){
- function fail(msg){
-  const t=document.getElementById('loadtext');
-  if(t){t.textContent=('ERROR: '+String(msg||'Unknown startup error')).slice(0,150);t.style.color='#ff9b91'}
-  const b=document.getElementById('loadbar');if(b){b.style.width='100%';b.style.background='#ff665d'}
- }
- addEventListener('error',e=>fail((e.filename?e.filename.split('/').pop()+':'+e.lineno+':'+e.colno+' — ':'')+(e.message||'Script failed to load')));
- addEventListener('unhandledrejection',e=>fail(e.reason?.message||e.reason||'Module rejected'));
- setTimeout(()=>{const t=document.getElementById('loadtext');if(t&&t.textContent==='INITIALIZING SYSTEMS')fail('Game module did not start. Check CDN/network.');},12000);
+ function fail(msg){var t=document.getElementById('loadtext');if(t){t.textContent=('ERROR: '+String(msg||'Unknown startup error')).slice(0,160);t.style.color='#ff9b91'}
+  var b=document.getElementById('loadbar');if(b){b.style.width='100%';b.style.background='#ff665d'}}
+ addEventListener('error',function(e){fail((e.filename?e.filename.split('/').pop()+':'+e.lineno+' — ':'')+(e.message||'Script failed to load'))});
+ addEventListener('unhandledrejection',function(e){fail(e.reason&&e.reason.message||e.reason||'Module rejected')});
+ setTimeout(function(){var t=document.getElementById('loadtext');if(t&&t.textContent==='INITIALIZING SYSTEMS')fail('Game module did not start. Check network / CDN access.')},12000);
+ document.addEventListener('touchmove',function(e){e.preventDefault()},{passive:false});
 })();
 </script>
-<script type="module" src="./game.js?v=stark-city-layout-07"></script>
+<script type="module" src="./game.js?v=m1"></script>
 </body></html>

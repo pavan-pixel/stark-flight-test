@@ -1,684 +1,775 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-import {FBXLoader} from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/FBXLoader.js';
-import {GLTFLoader} from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+// PROJECT STARK — Milestone 1 bundle (built from src/ modules)
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import JSZip from 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
-const $ = id => document.getElementById(id);
+// ===== core/PerformanceManager.js =====
+// Detects device capability, exposes a quality tier, and steps DOWN if FPS stays low.
+const TIERS = [
+  { name: 'low',    pixelRatio: 1.0,  nearRadius: 110, farRadius: 420, normalMaps: false, texSize: 512 },
+  { name: 'medium', pixelRatio: 1.25, nearRadius: 160, farRadius: 600, normalMaps: true, texSize: 1024 },
+  { name: 'high',   pixelRatio: 1.75, nearRadius: 220, farRadius: 800, normalMaps: true, texSize: 1024 },
+];
+
+class PerformanceManager {
+  constructor() {
+    const ua = navigator.userAgent || '';
+    const isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const mobile = isIOS || /Android|Mobile/.test(ua);
+    const mem = navigator.deviceMemory || (isIOS ? 4 : 8);
+    const cores = navigator.hardwareConcurrency || 4;
+    let tier = 2;
+    if (mobile) tier = (mem >= 6 && cores >= 6) ? 1 : 0;
+    else if (mem < 4 || cores < 4) tier = 1;
+    this.isMobile = mobile;
+    this.tierIndex = tier;
+    this.fpsAvg = 60;
+    this.lowTime = 0;
+    this.onTierChange = null;
+  }
+  get tier() { return TIERS[this.tierIndex]; }
+  // Called every frame. Lowers quality after ~3 s under 27 FPS.
+  frame(dt) {
+    if (dt <= 0) return;
+    this.fpsAvg += (1 / dt - this.fpsAvg) * 0.05;
+    this.lowTime = this.fpsAvg < 27 ? this.lowTime + dt : 0;
+    if (this.lowTime > 3 && this.tierIndex > 0) {
+      this.tierIndex--; this.lowTime = 0; this.fpsAvg = 40;
+      if (this.onTierChange) this.onTierChange(this.tier);
+    }
+  }
+}
+
+
+// ===== core/AssetManager.js =====
+
+const base = p => p.split('?')[0].split('/').pop().split('\\').pop();
+const lc = s => decodeURIComponent(s).toLowerCase();
+
+// Reads assets straight out of the ZIP files already in the repo root. Every failure is reported.
+class AssetManager {
+  constructor({ onError = () => {}, onStatus = () => {} } = {}) {
+    this.onError = onError; this.onStatus = onStatus;
+    this.entries = new Map(); this.urls = new Map(); this.textures = new Map();
+    this.maxTex = 1024; this.dropNormals = false;
+    this.manager = new THREE.LoadingManager();
+    this.manager.setURLModifier(u => this.urls.get(lc(base(u))) || u);
+    this.gltf = new GLTFLoader(this.manager);
+    this.loaded = []; this.failed = [];
+  }
+  _ok(n) { this.loaded.push(n); this.onStatus(this.loaded.length, this.failed.length); }
+  _fail(n, e) { const m = `${n}: ${e && e.message ? e.message : e}`; this.failed.push(m); this.onError(m); this.onStatus(this.loaded.length, this.failed.length); }
+
+  async mountZips(names, progress = () => {}) {
+    let i = 0;
+    await Promise.all(names.map(async n => {
+      try {
+        const r = await fetch('./' + n + '?v=m1'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
+        const z = await JSZip.loadAsync(await r.arrayBuffer());
+        for (const f of Object.values(z.files)) if (!f.dir) this.entries.set(lc(base(f.name)), f);
+        this._ok(n);
+      } catch (e) { this._fail(n, e); }
+      progress(++i / names.length);
+    }));
+  }
+  has(name) { return this.entries.has(lc(name)); }
+  async url(name) {
+    const k = lc(name); if (this.urls.has(k)) return this.urls.get(k);
+    const f = this.entries.get(k); if (!f) throw Error(name + ' not found in any ZIP');
+    const u = URL.createObjectURL(await f.async('blob')); this.urls.set(k, u); return u;
+  }
+  release() { for (const u of this.urls.values()) URL.revokeObjectURL(u); this.urls.clear(); this.entries.clear(); }
+
+  // Downscale textures that are larger than the device budget (keeps iPhone memory in check).
+  shrink(tex, size = this.maxTex) {
+    const img = tex && tex.image; if (!img || !img.width || img.width <= size) return;
+    const c = document.createElement('canvas'), k = size / Math.max(img.width, img.height);
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    tex.image = c; tex.needsUpdate = true;
+  }
+  shrinkMaterials(root) {
+    const slots = ['map', 'normalMap', 'metalnessMap', 'roughnessMap', 'aoMap', 'emissiveMap'];
+    const done = new Set();
+    root.traverse(o => { if (!o.material) return; for (const m of (Array.isArray(o.material) ? o.material : [o.material])) {
+      if (this.dropNormals) { m.normalMap = null; m.needsUpdate = true; }
+      for (const s of slots) { const t = m[s]; if (t && !done.has(t)) { done.add(t); this.shrink(t); } }
+    } });
+  }
+
+  async loadGLTF(name) {
+    try {
+      const f = this.entries.get(lc(name)); if (!f) throw Error('not found in any ZIP');
+      const text = await f.async('string'), j = JSON.parse(text);
+      await Promise.all([...(j.images || []), ...(j.buffers || [])].filter(x => x.uri && !x.uri.startsWith('data:')).map(x => this.url(base(x.uri))));
+      const g = await new Promise((res, rej) => this.gltf.parse(text, '', res, rej));
+      this.shrinkMaterials(g.scene); this._ok(name); return g;
+    } catch (e) { this._fail(name, e); throw e; }
+  }
+  async prefetch(re) { await Promise.all([...this.entries.keys()].filter(k => re.test(k)).map(k => this.url(k))); }
+  async loadFBX(name) {
+    try {
+      const url = await this.url(name);
+      await this.prefetch(/^for_substance.*\.(png|jpe?g|tga)$/);
+      const m = new THREE.LoadingManager(); m.setURLModifier(u => this.urls.get(lc(base(u))) || u);
+      const o = await new FBXLoader(m).loadAsync(url); this._ok(name); return o;
+    } catch (e) { this._fail(name, e); throw e; }
+  }
+  async loadTexture(name, { srgb = false, repeat = null, anisotropy = 4 } = {}) {
+    const key = name + (srgb ? '#s' : ''); if (this.textures.has(key)) return this.textures.get(key);
+    try {
+      const t = await new THREE.TextureLoader().loadAsync(await this.url(name));
+      if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = anisotropy; this.shrink(t);
+      if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat, repeat); }
+      this.textures.set(key, t); this._ok(name); return t;
+    } catch (e) { this._fail(name, e); return null; }
+  }
+}
+
+
+// ===== core/SceneManager.js =====
+
+const SUN_DIR = new THREE.Vector3(-0.5, 0.7, 0.45).normalize();
+const FOG_COLOR = 0xb4c6d6;
+
+class SceneManager {
+  constructor(perf) {
+    this.perf = perf;
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(FOG_COLOR);
+    this.scene.fog = new THREE.FogExp2(FOG_COLOR, 0.0014);
+    this.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 3500);
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, perf.tier.pixelRatio));
+    this.renderer.setSize(innerWidth, innerHeight);
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
+    document.body.prepend(this.renderer.domElement);
+
+    // Image-based lighting (procedural, no download) for metal reflections.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
+
+    this.scene.add(new THREE.HemisphereLight(0xcfe4ff, 0x3b4350, 1.1));
+    this.sun = new THREE.DirectionalLight(0xfff1d6, 2.6);
+    this.sun.position.copy(SUN_DIR).multiplyScalar(300);
+    this.scene.add(this.sun);
+
+    this.sky = new THREE.Mesh(new THREE.SphereGeometry(3000, 32, 16), new THREE.ShaderMaterial({
+      side: THREE.BackSide, depthWrite: false, fog: false,
+      uniforms: { sunDir: { value: SUN_DIR } },
+      vertexShader: 'varying vec3 vD;void main(){vD=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+      fragmentShader: 'varying vec3 vD;uniform vec3 sunDir;void main(){float h=clamp(vD.y,0.,1.);vec3 hor=vec3(.71,.78,.84),top=vec3(.2,.45,.78);vec3 c=mix(hor,top,pow(h,.55));float s=max(dot(normalize(vD),sunDir),0.);c+=vec3(1.,.88,.65)*(pow(s,600.)*3.+pow(s,12.)*.18);gl_FragColor=vec4(c,1.);}',
+    }));
+    this.sky.renderOrder = -1;
+    this.scene.add(this.sky);
+    addEventListener('resize', () => this.resize());
+    perf.onTierChange = t => this.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio));
+  }
+  resize() {
+    this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix();
+    this.renderer.setSize(innerWidth, innerHeight);
+  }
+  render() { this.sky.position.copy(this.camera.position); this.renderer.render(this.scene, this.camera); }
+}
+
+
+// ===== environment/CityManager.js =====
+
+// Grid layout (metres). Roads run along lines x = k*PITCH and z = k*PITCH.
+const PITCH = 110, BLOCK = 86, HALF = BLOCK / 2, GRID = 8, SLOT = 37, PAD_H = 0.12;
+const WORLD_LIMIT = (GRID / 2) * PITCH + PITCH * 0.5;
+const BUILDINGS = ['Building_Large_2', 'Building_Medium_2_001', 'Building_Small_1'];
+
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0), C = new THREE.Color();
+
+class CityManager {
+  constructor(scene, assets, perf) {
+    this.scene = scene; this.assets = assets; this.perf = perf;
+    this.group = new THREE.Group(); scene.add(this.group);
+    this.templates = []; this.placements = []; this.colliders = []; this.parks = [];
+    this.nearMeshes = []; this.farMesh = null; this.ringCount = 0;
+    this.lastUpdate = new THREE.Vector3(1e9, 0, 1e9);
+    this.near = perf.tier.nearRadius; this.far = perf.tier.farRadius;
+  }
+
+  async load(progress = () => {}) {
+    const a = this.assets; a.maxTex = this.perf.tier.texSize; a.dropNormals = !this.perf.tier.normalMaps; const base = '';
+    progress('LOADING BUILDING MODELS', 10);
+    const [gb, decalCross, decalYellow] = await Promise.all([
+      Promise.all(BUILDINGS.map(n => a.loadGLTF(base + n + '.gltf'))),
+      a.loadGLTF(base + 'Decal_Crosswalk.gltf'), a.loadGLTF(base + 'Decal_DoubleYellow_Straight.gltf'),
+    ]);
+    progress('PROCESSING CITY GEOMETRY', 55);
+    gb.forEach(g => this.templates.push(this._template(g.scene)));
+    const [asphalt, concrete] = await Promise.all([
+      a.loadTexture(base + 'T_Concrete_Asphalt_BaseColor.png', { srgb: true, repeat: 260 }),
+      a.loadTexture(base + 'T_Concrete_BaseColor.png', { srgb: true, repeat: 14 }),
+    ]);
+    progress('BUILDING STREETS', 70);
+    this._generate();
+    this._buildGround(asphalt, concrete);
+    this._buildBuildingInstances();
+    this._buildFarAndSkyline();
+    this._buildDecals(decalCross.scene, decalYellow.scene);
+    this._buildStreetLights();
+    this.update(new THREE.Vector3(0, 0, 0), true);
+    progress('CITY READY', 100);
+  }
+
+  _template(root) {
+    root.updateMatrixWorld(true);
+    const meshes = []; root.traverse(o => { if (o.isMesh) meshes.push(o); });
+    if (!meshes.length) throw new Error('Building model has no meshes');
+    const box = new THREE.Box3().setFromObject(root);
+    const t = { meshes, min: box.min.clone(), max: box.max.clone() };
+    t.w = box.max.x - box.min.x; t.d = box.max.z - box.min.z; t.h = box.max.y - box.min.y;
+    t.cx = (box.max.x + box.min.x) / 2; t.cz = (box.max.z + box.min.z) / 2;
+    for (const m of meshes) for (const mat of (Array.isArray(m.material) ? m.material : [m.material])) mat.envMapIntensity = 0.3;
+    return t;
+  }
+
+  // Four corner towers per block, facing the street, tiled inside a 74x74 m usable area.
+  _generate() {
+    const r = rng(85), half = GRID / 2;
+    for (let bi = 0; bi < GRID; bi++) for (let bj = 0; bj < GRID; bj++) {
+      const cx = (bi - half + 0.5) * PITCH, cz = (bj - half + 0.5) * PITCH;
+      const dist = Math.hypot(cx, cz) / (half * PITCH);
+      if (r() < 0.08 && dist > 0.15) { this.parks.push({ cx, cz }); continue; }
+      for (const qx of [-1, 1]) for (const qz of [-1, 1]) {
+        const ti = Math.floor(r() * 3), t = this.templates[ti];
+        const faceZ = r() < 0.5;
+        const rot = faceZ ? (qz > 0 ? 0 : Math.PI) : (qx > 0 ? Math.PI / 2 : -Math.PI / 2);
+        const s = Math.min(36 / t.w, 36 / t.d);
+        const sy = s * (0.85 + r() * 0.5) * (1 + (1 - Math.min(1, dist)) * 0.7);
+        const sw = t.w * s, sd = t.d * s;
+        const hx = (faceZ ? sw : sd) / 2, hz = (faceZ ? sd : sw) / 2;
+        const px = faceZ ? cx + qx * SLOT / 2 : cx + qx * (SLOT - hx);
+        const pz = faceZ ? cz + qz * (SLOT - hz) : cz + qz * SLOT / 2;
+        M.compose(V.set(px, 0, pz), Q.setFromAxisAngle(UP, rot), S.set(s, sy, s));
+        M.multiply(new THREE.Matrix4().makeTranslation(-t.cx, -t.min.y, -t.cz));
+        const height = t.h * sy;
+        this.placements.push({ ti, px, pz, hx, hz, height, matrix: M.clone(), tint: 0.55 + r() * 0.3 });
+        this.colliders.push({ minX: px - hx, maxX: px + hx, minZ: pz - hz, maxZ: pz + hz, h: height });
+      }
+    }
+  }
+
+  _buildGround(asphalt, concrete) {
+    const size = GRID * PITCH + 2000;
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(size, size),
+      new THREE.MeshStandardMaterial({ map: asphalt, color: 0xbdbdbd, roughness: 0.95, metalness: 0, envMapIntensity: 0.2 }));
+    ground.rotation.x = -Math.PI / 2; ground.position.y = -0.01; this.group.add(ground);
+    const padGeo = new THREE.BoxGeometry(BLOCK, PAD_H, BLOCK); padGeo.translate(0, PAD_H / 2, 0);
+    const pads = new THREE.InstancedMesh(padGeo, new THREE.MeshStandardMaterial({ map: concrete, color: 0xcfcfcf, roughness: 0.9, envMapIntensity: 0.2 }), GRID * GRID);
+    const parkKeys = new Set(this.parks.map(p => p.cx + ',' + p.cz));
+    let n = 0, pn = 0;
+    const parkMesh = new THREE.InstancedMesh(padGeo, new THREE.MeshStandardMaterial({ color: 0x41653d, roughness: 1, envMapIntensity: 0.1 }), Math.max(1, this.parks.length));
+    for (let bi = 0; bi < GRID; bi++) for (let bj = 0; bj < GRID; bj++) {
+      const cx = (bi - GRID / 2 + 0.5) * PITCH, cz = (bj - GRID / 2 + 0.5) * PITCH;
+      M.makeTranslation(cx, 0, cz);
+      if (parkKeys.has(cx + ',' + cz)) parkMesh.setMatrixAt(pn++, M); else pads.setMatrixAt(n++, M);
+    }
+    pads.count = n; parkMesh.count = pn;
+    pads.frustumCulled = parkMesh.frustumCulled = false;
+    this.group.add(pads, parkMesh);
+  }
+
+  _buildBuildingInstances() {
+    const cap = this.placements.length || 1;
+    this.templates.forEach(t => {
+      t.instanced = t.meshes.map(m => {
+        const im = new THREE.InstancedMesh(m.geometry, m.material, cap);
+        im.count = 0; im.frustumCulled = false; this.group.add(im); this.nearMeshes.push(im); return im;
+      });
+    });
+  }
+
+  // Far LOD: one instanced box per distant building + outer skyline ring for depth.
+  _buildFarAndSkyline() {
+    const r = rng(1985), ringN = 150, cap = ringN + this.placements.length;
+    const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0, 0.5, 0);
+    this.farMesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, metalness: 0.1, envMapIntensity: 0.25 }), cap);
+    this.farMesh.frustumCulled = false;
+    for (let i = 0; i < ringN; i++) {
+      const ang = r() * Math.PI * 2, rad = WORLD_LIMIT + 120 + r() * 800, h = 45 + Math.pow(r(), 2.2) * 230, w = 28 + r() * 50, d = 28 + r() * 50;
+      M.compose(V.set(Math.cos(ang) * rad, 0, Math.sin(ang) * rad), Q.setFromAxisAngle(UP, r() * 3), S.set(w, h, d));
+      this.farMesh.setMatrixAt(i, M);
+      this.farMesh.setColorAt(i, C.setHSL(0.58, 0.12, 0.42 + r() * 0.2));
+    }
+    this.ringCount = ringN; this.farMesh.count = ringN; this.group.add(this.farMesh);
+  }
+
+  _decalMesh(root) { let m = null; root.traverse(o => { if (o.isMesh && !m) m = o; }); if (!m) throw new Error('Decal has no mesh'); return m; }
+  _buildDecals(crossRoot, yellowRoot) {
+    const cross = this._decalMesh(crossRoot), yellow = this._decalMesh(yellowRoot);
+    for (const m of [cross, yellow]) {
+      const mat = Array.isArray(m.material) ? m.material[0] : m.material;
+      mat.transparent = true; mat.depthWrite = false; mat.polygonOffset = true; mat.polygonOffsetFactor = -2; mat.polygonOffsetUnits = -2;
+    }
+    const lines = []; for (let k = 0; k <= GRID; k++) lines.push((k - GRID / 2) * PITCH);
+    const ROAD_HALF = (PITCH - BLOCK) / 2, y = 0.148 + 0.03;
+    // Crosswalks: 4 per junction, stripes spanning the road width.
+    const cm = []; 
+    for (const x of lines) for (const z of lines) for (const [dx, dz, rot] of [[1, 0, 0], [-1, 0, 0], [0, 1, Math.PI / 2], [0, -1, Math.PI / 2]]) {
+      const off = ROAD_HALF + 3.4;
+      cm.push(new THREE.Matrix4().compose(V.set(x + dx * off, y, z + dz * off), Q.setFromAxisAngle(UP, rot), S.set(1.3, 1, (ROAD_HALF * 2 - 1) / 5.43)));
+    }
+    this._instanceDecal(cross, cm);
+    // Double yellow centre lines between junctions, tiled to the decal length.
+    cross.geometry.computeBoundingBox(); yellow.geometry.computeBoundingBox();
+    const bb = yellow.geometry.boundingBox, lx = bb.max.x - bb.min.x, lz = bb.max.z - bb.min.z, alongZ = lz >= lx, len = Math.max(lx, lz);
+    const tiles = Math.floor((BLOCK + 2) / len), ym = [];
+    for (const lineA of lines) for (let k = 0; k < GRID; k++) {
+      const mid = (k - GRID / 2 + 0.5) * PITCH;
+      for (let i = 0; i < tiles; i++) {
+        const u = mid - (tiles * len) / 2 + (i + 0.5) * len;
+        // road along z (x = lineA): decal long axis must align with z; road along x: rotate.
+        ym.push(new THREE.Matrix4().compose(V.set(lineA, y, u), Q.setFromAxisAngle(UP, alongZ ? 0 : Math.PI / 2), S.set(1, 1, 1)));
+        ym.push(new THREE.Matrix4().compose(V.set(u, y, lineA), Q.setFromAxisAngle(UP, alongZ ? Math.PI / 2 : 0), S.set(1, 1, 1)));
+      }
+    }
+    this._instanceDecal(yellow, ym);
+  }
+  _instanceDecal(mesh, mats) {
+    const im = new THREE.InstancedMesh(mesh.geometry, mesh.material, mats.length);
+    mats.forEach((m, i) => im.setMatrixAt(i, m)); im.frustumCulled = false; this.group.add(im);
+  }
+
+  _buildStreetLights() {
+    const pole = new THREE.CylinderGeometry(0.1, 0.17, 8, 6); pole.translate(0, 4, 0);
+    const head = new THREE.BoxGeometry(1.6, 0.16, 0.5); head.translate(0.7, 8, 0);
+    const lines = []; for (let k = 0; k <= GRID; k++) lines.push((k - GRID / 2) * PITCH);
+    const n = lines.length * lines.length * 4;
+    const poles = new THREE.InstancedMesh(pole, new THREE.MeshStandardMaterial({ color: 0x59656e, metalness: 0.7, roughness: 0.4 }), n);
+    const heads = new THREE.InstancedMesh(head, new THREE.MeshBasicMaterial({ color: 0xffe4b5 }), n);
+    let i = 0; const off = (PITCH - BLOCK) / 2 + 1.2;
+    for (const x of lines) for (const z of lines) for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      // Arm points toward the junction centre.
+      M.compose(V.set(x + sx * off, 0, z + sz * off), Q.setFromAxisAngle(UP, Math.atan2(-sx, -sz) - Math.PI / 2), S.set(1, 1, 1));
+      poles.setMatrixAt(i, M); heads.setMatrixAt(i, M); i++;
+    }
+    poles.frustumCulled = heads.frustumCulled = false; this.group.add(poles, heads);
+  }
+
+  setRadii(near, far) { this.near = near; this.far = far; this.lastUpdate.set(1e9, 0, 1e9); }
+
+  // Distance-based visibility: full models near the player, box LOD mid-range, nothing beyond.
+  update(pos, force = false) {
+    if (!force && Math.hypot(pos.x - this.lastUpdate.x, pos.z - this.lastUpdate.z) < 10) return;
+    this.lastUpdate.copy(pos);
+    const counts = this.templates.map(() => 0); let far = this.ringCount;
+    for (const p of this.placements) {
+      const d = Math.hypot(p.px - pos.x, p.pz - pos.z);
+      if (d < this.near) {
+        const t = this.templates[p.ti], k = counts[p.ti]++;
+        for (const im of t.instanced) im.setMatrixAt(k, p.matrix);
+      } else if (d < this.far) {
+        M.compose(V.set(p.px, 0, p.pz), Q.identity(), S.set(p.hx * 2, p.height, p.hz * 2));
+        this.farMesh.setMatrixAt(far, M); this.farMesh.setColorAt(far, C.setHSL(0.07, 0.25, p.tint * 0.6)); far++;
+      }
+    }
+    this.templates.forEach((t, i) => t.instanced.forEach(im => { im.count = counts[i]; im.instanceMatrix.needsUpdate = true; }));
+    this.farMesh.count = far; this.farMesh.instanceMatrix.needsUpdate = true;
+    if (this.farMesh.instanceColor) this.farMesh.instanceColor.needsUpdate = true;
+  }
+
+  groundHeight(x, z) {
+    const u = x / PITCH + GRID / 2, v = z / PITCH + GRID / 2;
+    if (u < 0 || v < 0 || u > GRID || v > GRID) return 0;
+    return (Math.abs((u % 1) - 0.5) * PITCH < HALF && Math.abs((v % 1) - 0.5) * PITCH < HALF) ? PAD_H : 0;
+  }
+
+  // Pushes a circle (radius r, at height y) out of building footprints. Returns true if it moved.
+  resolveCircle(pos, r, y) {
+    let hit = false;
+    for (const c of this.colliders) {
+      if (y > c.h + 0.5 || pos.x < c.minX - r || pos.x > c.maxX + r || pos.z < c.minZ - r || pos.z > c.maxZ + r) continue;
+      const nx = Math.max(c.minX, Math.min(pos.x, c.maxX)), nz = Math.max(c.minZ, Math.min(pos.z, c.maxZ));
+      let dx = pos.x - nx, dz = pos.z - nz; const d2 = dx * dx + dz * dz;
+      if (d2 >= r * r) continue;
+      hit = true;
+      if (d2 > 1e-6) { const d = Math.sqrt(d2); pos.x = nx + dx / d * r; pos.z = nz + dz / d * r; }
+      else { // centre inside the box: exit through the nearest face
+        const e = [pos.x - c.minX, c.maxX - pos.x, pos.z - c.minZ, c.maxZ - pos.z], m = Math.min(...e);
+        if (m === e[0]) pos.x = c.minX - r; else if (m === e[1]) pos.x = c.maxX + r; else if (m === e[2]) pos.z = c.minZ - r; else pos.z = c.maxZ + r;
+      }
+    }
+    return hit;
+  }
+
+  // Ray vs building boxes; returns the nearest hit distance (or maxDist).
+  raycast(origin, dir, maxDist) {
+    let best = maxDist;
+    for (const c of this.colliders) {
+      let t0 = 0, t1 = best;
+      const o = [origin.x, origin.y, origin.z], d = [dir.x, dir.y, dir.z], lo = [c.minX, 0, c.minZ], hi = [c.maxX, c.h, c.maxZ];
+      let ok = true;
+      for (let i = 0; i < 3 && ok; i++) {
+        if (Math.abs(d[i]) < 1e-8) { if (o[i] < lo[i] || o[i] > hi[i]) ok = false; }
+        else { let a = (lo[i] - o[i]) / d[i], b = (hi[i] - o[i]) / d[i]; if (a > b) [a, b] = [b, a]; t0 = Math.max(t0, a); t1 = Math.min(t1, b); if (t0 > t1) ok = false; }
+      }
+      if (ok && t0 < best) best = t0;
+    }
+    return best;
+  }
+}
+
+
+// ===== character/IronMan.js =====
+
+const TEX = 'For_Substance_Low_Polly_';
+// Per-part PBR texture sets shipped with the Mark 85 (file names are truncated in the source pack).
+const PARTS = {
+  silver:     { base: 'Silver_Part_BaseCo', metal: 'Silver_Part_Metall', rough: 'Silver_Part_Roughn', normal: 'Silver_Part_Normal' },
+  gold:       { base: 'Gold_Part_BaseColo', metal: 'Gold_Part_Metallic', rough: 'Gold_Part_Roughnes', normal: 'Gold_Part_Normal' },
+  red:        { base: 'Red_Part_BaseColor', metal: 'Red_Part_Metallic', rough: 'Red_Part_Roughness', normal: 'Red_Part_Normal' },
+  arcreactor: { base: 'Arc_Reactor_BaseCo', metal: 'Arc_Reactor_Metall', rough: 'Arc_Reactor_Roughn', normal: 'Arc_Reactor_Normal' },
+  lights:     { base: 'Lights_BaseColor' },
+};
+const key = s => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
+
+class IronMan {
+  constructor(assets, perf) {
+    this.assets = assets; this.perf = perf;
+    this.root = new THREE.Group();   // position + heading (forward = -Z)
+    this.tilt = new THREE.Group();   // flight pitch / bank
+    this.root.add(this.tilt);
+    this.model = null; this.bones = {}; this.glows = []; this.height = 1.9; this.fallback = false;
+    this.flying = 0;                 // 0..1 thruster intensity
+  }
+
+  async load(progress = () => {}) {
+    progress('LOADING MARK 85', 5);
+    let obj;
+    try { obj = await this.assets.loadFBX('Og.fbx'); }
+    catch (e) { this._buildFallback(); return; }
+    // Scale to ~1.95 m tall and plant the feet on y = 0 (original model orientation preserved: rotation.y = PI).
+    const box = new THREE.Box3().setFromObject(obj), size = box.getSize(new THREE.Vector3());
+    if (!isFinite(size.y) || size.y <= 0) { this._buildFallback(); throw new Error('Mark 85 has invalid dimensions'); }
+    const k = 1.95 / size.y; obj.scale.multiplyScalar(k);
+    obj.updateMatrixWorld(true);
+    const b2 = new THREE.Box3().setFromObject(obj), c = b2.getCenter(new THREE.Vector3());
+    obj.position.x -= c.x; obj.position.z -= c.z; obj.position.y -= b2.min.y;
+    const holder = new THREE.Group(); holder.rotation.y = Math.PI; holder.add(obj);
+    this.tilt.add(holder); this.model = obj;
+
+    progress('APPLYING SUIT MATERIALS', 60);
+    obj.traverse(o => {
+      if (o.isBone) { const n = key(o.name); for (const [id, re] of [['lHand', /lefthand$/], ['rHand', /righthand$/], ['lFoot', /leftfoot$/], ['rFoot', /rightfoot$/], ['chest', /spine2$/], ['head', /head$/]]) if (re.test(n)) this.bones[id] = o; }
+    });
+    await this._applyMaterials(obj);
+    this._buildGlows();
+    progress('MARK 85 ONLINE', 100);
+  }
+
+  async _applyMaterials(obj) {
+    const meshes = []; obj.traverse(o => { if (o.isMesh) meshes.push(o); });
+    const useNormal = this.perf.tier.normalMaps;
+    for (const m of meshes) {
+      m.frustumCulled = false; // skinned bounds are unreliable on imported FBX
+      const k = key(m.name) || key(Array.isArray(m.material) ? m.material[0].name : m.material.name);
+      const orig = Array.isArray(m.material) ? m.material[0] : m.material;
+      const set = PARTS[k];
+      if (k.includes('glass')) {
+        m.material = new THREE.MeshStandardMaterial({ color: 0x9fd8e8, metalness: 0.9, roughness: 0.05, transparent: true, opacity: 0.45, envMapIntensity: 1.4 });
+      } else if (set) {
+        const g = async (f, srgb) => f ? this.assets.loadTexture(TEX + f + '.png', { srgb }) : null;
+        const [base, metal, rough, normal] = await Promise.all([g(set.base, true), g(set.metal), g(set.rough), useNormal ? g(set.normal) : null]);
+        const mat = new THREE.MeshStandardMaterial({ map: base || orig.map, color: 0xffffff, metalness: metal ? 1 : 0.6, roughness: rough ? 1 : 0.4, metalnessMap: metal, roughnessMap: rough, normalMap: normal, envMapIntensity: 1.1 });
+        if (k === 'arcreactor') { mat.emissive = new THREE.Color(0x66e6ff); mat.emissiveMap = base; mat.emissiveIntensity = 1.6; }
+        if (k === 'lights') { mat.emissive = new THREE.Color(0xffffff); mat.emissiveMap = base; mat.emissiveIntensity = 1.4; mat.metalness = 0; mat.roughness = 0.5; }
+        m.material = mat;
+      } else if (orig) {
+        // Unknown part: keep the original texture, convert to PBR so lighting/reflections work.
+        m.material = new THREE.MeshStandardMaterial({ map: orig.map, color: orig.color, normalMap: useNormal ? orig.normalMap : null, metalness: 0.6, roughness: 0.4 });
+      }
+    }
+  }
+
+  _buildGlows() {
+    const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+    const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(.3, 'rgba(120,230,255,.8)'); g.addColorStop(1, 'rgba(60,180,255,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+    const tex = new THREE.CanvasTexture(c);
+    for (const id of ['lHand', 'rHand', 'lFoot', 'rFoot']) {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+      s.visible = false; s.userData.bone = id; this.root.add(s); this.glows.push(s);
+    }
+    this.chestLight = new THREE.PointLight(0x66e6ff, 0.8, 7); this.root.add(this.chestLight);
+  }
+
+  _buildFallback() {
+    this.fallback = true;
+    const red = new THREE.MeshStandardMaterial({ color: 0x9d2027, metalness: .8, roughness: .25 }), gold = new THREE.MeshStandardMaterial({ color: 0xc69a4d, metalness: .85, roughness: .22 });
+    const add = (geo, m, p) => { const o = new THREE.Mesh(geo, m); o.position.set(...p); this.tilt.add(o); };
+    add(new THREE.CapsuleGeometry(.36, .9, 6, 10), red, [0, 1.1, 0]); add(new THREE.SphereGeometry(.28, 16, 12), gold, [0, 1.9, 0]);
+    for (const s of [-1, 1]) { add(new THREE.CapsuleGeometry(.13, .65, 4, 8), red, [s * .53, 1.15, 0]); add(new THREE.CapsuleGeometry(.12, .62, 4, 8), red, [s * .22, .4, 0]); }
+  }
+
+  // Thruster glow follows the real hand/foot bones; intensity = flight state.
+  update(dt, flightAmount) {
+    this.flying += (flightAmount - this.flying) * Math.min(1, dt * 6);
+    const p = new THREE.Vector3();
+    this.root.updateMatrixWorld(true);
+    for (const s of this.glows) {
+      const b = this.bones[s.userData.bone]; s.visible = !!b && this.flying > 0.05;
+      if (!s.visible) continue;
+      b.getWorldPosition(p); this.root.worldToLocal(p); s.position.copy(p);
+      const foot = s.userData.bone.endsWith('Foot'); s.scale.setScalar((foot ? 0.9 : 0.55) * this.flying * (0.9 + Math.random() * 0.2));
+    }
+    if (this.chestLight) { this.chestLight.position.set(0, 1.4, -0.25); this.chestLight.intensity = 0.6 + this.flying * 1.2; }
+  }
+
+  worldPosOf(id, out) { const b = this.bones[id]; if (b) { b.getWorldPosition(out); return out; } return out.copy(this.root.position).add(new THREE.Vector3(0, 1.3, 0)); }
+}
+
+
+// ===== character/MovementController.js =====
+
+const WALK = 4.5, RUN = 9.5, FLY = 38, FLY_BOOST = 95, RADIUS = 0.7;
+const MODE = { WALK: 'WALK', TAKEOFF: 'TAKEOFF', FLY: 'FLIGHT', LANDING: 'LANDING' };
+
+// Camera-relative walking and (M1) free flight with takeoff/landing phases. Animations come in Milestone 2.
+class MovementController {
+  constructor() {
+    this.pos = new THREE.Vector3(0, 0, 0); this.vel = new THREE.Vector3();
+    this.heading = 0; this.mode = MODE.WALK; this.targetAlt = 0; this.speed = 0; this.bank = 0; this.pitch = 0; this.hitLimit = false;
+  }
+  takeoff() { if (this.mode === MODE.WALK) { this.mode = MODE.TAKEOFF; this.targetAlt = 14; this.takeoffT = 0; return true; } return false; }
+  land() { if (this.mode === MODE.FLY || this.mode === MODE.TAKEOFF) { this.mode = MODE.LANDING; this.targetAlt = 0; return true; } return false; }
+  get flying() { return this.mode !== MODE.WALK; }
+
+  update(dt, inp, camYaw, city) {
+    const fwd = new THREE.Vector3(-Math.sin(camYaw), 0, -Math.cos(camYaw)), right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+    const dir = fwd.clone().multiplyScalar(inp.y).add(right.multiplyScalar(inp.x));
+    const mag = Math.min(1, dir.length()); if (mag > 1e-3) dir.normalize();
+    const airborne = this.mode !== MODE.WALK;
+    let top = airborne ? (inp.boost ? FLY_BOOST : (inp.hover ? 4 : FLY)) : (inp.run ? RUN : WALK);
+    if (this.mode === MODE.TAKEOFF || this.mode === MODE.LANDING) top = Math.min(top, 8);
+    const want = dir.multiplyScalar(top * mag);
+    const k = Math.min(1, dt * (airborne ? 2.2 : 9));
+    this.vel.x += (want.x - this.vel.x) * k; this.vel.z += (want.z - this.vel.z) * k;
+    const prevHeading = this.heading;
+    if (mag > 0.08) { const a = Math.atan2(-dir.x, -dir.z); let d = a - this.heading; d = Math.atan2(Math.sin(d), Math.cos(d)); this.heading += d * Math.min(1, dt * (airborne ? 4 : 10)); }
+    this.pos.x += this.vel.x * dt; this.pos.z += this.vel.z * dt;
+    this.speed = Math.hypot(this.vel.x, this.vel.z);
+
+    // Altitude state machine.
+    if (this.mode === MODE.FLY) this.targetAlt = THREE.MathUtils.clamp(this.targetAlt + (inp.up - inp.down) * (inp.boost ? 40 : 16) * dt, 2, 420);
+    const ground = city.groundHeight(this.pos.x, this.pos.z);
+    const climb = this.mode === MODE.LANDING ? 1.8 : 2.4;
+    this.pos.y = THREE.MathUtils.damp(this.pos.y, Math.max(this.targetAlt, ground), climb, dt);
+    if (this.mode === MODE.TAKEOFF && (this.takeoffT += dt) > 0.6 && this.pos.y > this.targetAlt - 1.5) this.mode = MODE.FLY;
+    if (this.mode === MODE.LANDING && this.pos.y < ground + 0.06) { this.pos.y = ground; this.mode = MODE.WALK; this.landed = true; }
+    if (this.mode === MODE.WALK) this.pos.y = THREE.MathUtils.damp(this.pos.y, ground, 14, dt);
+
+    // Collision with buildings (flight collides only below roof height) and the soft world edge.
+    city.resolveCircle(this.pos, RADIUS, this.pos.y);
+    this.hitLimit = false;
+    for (const ax of ['x', 'z']) if (Math.abs(this.pos[ax]) > WORLD_LIMIT) { this.pos[ax] = Math.sign(this.pos[ax]) * WORLD_LIMIT; this.vel[ax] = 0; this.hitLimit = true; }
+
+    // Visual lean (used by IronMan.tilt).
+    const yawRate = Math.atan2(Math.sin(this.heading - prevHeading), Math.cos(this.heading - prevHeading)) / Math.max(dt, 1e-3);
+    const fast = airborne ? Math.min(1, this.speed / FLY) : 0;
+    this.pitch = THREE.MathUtils.damp(this.pitch, airborne ? -0.1 - fast * 0.85 : 0, 5, dt);
+    this.bank = THREE.MathUtils.damp(this.bank, airborne ? THREE.MathUtils.clamp(yawRate * 0.18, -0.6, 0.6) * fast : 0, 5, dt);
+  }
+}
+
+
+// ===== camera/ThirdPersonCamera.js =====
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-let scene, camera, renderer, clock;
-let iron = null, mixer = null, animActions = {}, currentAnim = '';
-let city = [], cars = [], shots = [];
-let steer = {x: 0, y: 0}, flight = false, run = false, boost = false, hover = false;
-let energy = 100, shotAt = 0;
-let cameraYaw = 0, cameraPitch = 0.22, cameraDistance = 10;
-let draggingCamera = false, lastPointer = {x: 0, y: 0};
-let suitMeshes = [], thrusterLights = [];
-
-function loading(t, p) {
-  const lt = $('loadtext'), lb = $('loadbar');
-  if (lt) lt.textContent = t;
-  if (lb) lb.style.width = p + '%';
-}
-
-function mat(color, metalness = 0.2, roughness = 0.7) {
-  return new THREE.MeshStandardMaterial({color, metalness, roughness});
-}
-
-function init() {
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x8da9c2);
-  scene.fog = new THREE.FogExp2(0x9aafc2, 0.00035);
-
-  camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 3500);
-
-  renderer = new THREE.WebGLRenderer({antialias: devicePixelRatio < 1.5, powerPreference: 'high-performance'});
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
-  renderer.setSize(innerWidth, innerHeight);
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.2;
-  document.body.prepend(renderer.domElement);
-
-  clock = new THREE.Clock();
-
-  const hemi = new THREE.HemisphereLight(0xdbeeff, 0x303842, 2.2);
-  scene.add(hemi);
-
-  const sun = new THREE.DirectionalLight(0xfff1dc, 3.0);
-  sun.position.set(180, 320, 150);
-  scene.add(sun);
-
-  const sky = new THREE.Mesh(
-    new THREE.SphereGeometry(2600, 24, 16),
-    new THREE.MeshBasicMaterial({color: 0x8da9c2, side: THREE.BackSide})
-  );
-  scene.add(sky);
-
-  try {
-    makeCity();
-    loadSuitAndAnimations();
-    controls();
-    setupCameraSwipe();
-    addEventListener('resize', resize);
-    animate();
-  } catch (err) {
-    console.error('STARK INIT FAILED', err);
-    loading('STARTUP ERROR: ' + (err.message || err), 100);
+// Preserves the original swipe-to-orbit (yaw -= dx*.006, pitch += dy*.004) and adds pinch zoom,
+// walk/fly transitions, boost FOV and building collision.
+class ThirdPersonCamera {
+  constructor(camera, city) {
+    this.camera = camera; this.city = city;
+    this.yaw = 0; this.pitch = 0.16; this.dist = 9; this.userDist = 1; this.curDist = 9;
+    this.pointers = new Map(); this.pinch = 0; this.shake = 0;
+    this._tmp = new THREE.Vector3(); this._dir = new THREE.Vector3(); this.pos = new THREE.Vector3(0, 4, 12);
   }
-}
-
-function makeCity() {
-  const asphalt = mat(0x1e242b, 0.05, 0.92);
-  const sidewalkMat = mat(0x7d8387, 0.04, 0.88);
-  const curbMat = mat(0xa8abaa, 0.08, 0.75);
-
-  // Broad NYC Central Avenue
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(60, 3200), asphalt);
-  road.rotation.x = -Math.PI / 2;
-  road.position.set(0, -0.09, -1200);
-  scene.add(road);
-
-  for (const side of [-1, 1]) {
-    const walk = new THREE.Mesh(new THREE.PlaneGeometry(12, 3200), sidewalkMat);
-    walk.rotation.x = -Math.PI / 2;
-    walk.position.set(side * 36, -0.015, -1200);
-    scene.add(walk);
-
-    const curb = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 3200), curbMat);
-    curb.position.set(side * 29.8, 0.1, -1200);
-    scene.add(curb);
-  }
-
-  // Cross intersections & Avenue Crosswalks
-  for (let z = 200; z > -2800; z -= 220) {
-    const crossStreet = new THREE.Mesh(new THREE.PlaneGeometry(280, 24), asphalt);
-    crossStreet.rotation.x = -Math.PI / 2;
-    crossStreet.position.set(0, -0.07, z);
-    scene.add(crossStreet);
-
-    for (let x = -26; x <= 26; x += 3.2) {
-      const bar = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 6), new THREE.MeshBasicMaterial({color: 0xedf1f4}));
-      bar.rotation.x = -Math.PI / 2;
-      bar.position.set(x, 0.015, z + 11);
-      scene.add(bar);
-    }
-  }
-
-  // Street furniture & light posts
-  const metal = mat(0x4d5b66, 0.8, 0.3);
-  const lampGlow = new THREE.MeshBasicMaterial({color: 0xffefc6});
-  for (let z = 250; z > -2800; z -= 65) {
-    for (const side of [-1, 1]) {
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.16, 8.5, 7), metal);
-      pole.position.set(side * 28.5, 4.25, z);
-      scene.add(pole);
-
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.14, 0.14), metal);
-      arm.position.set(side * 27.4, 8.2, z);
-      scene.add(arm);
-
-      const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.15, 0.35), lampGlow);
-      bulb.position.set(side * 26.3, 8.05, z);
-      scene.add(bulb);
-    }
-  }
-
-  // Dynamic NYC Traffic
-  for (let i = 0; i < 30; i++) {
-    const c = new THREE.Group();
-    const colors = [0x223548, 0x852e2a, 0x98a3a8, 0x273133, 0xbfa97d, 0x111317];
-    const paint = mat(colors[i % colors.length], 0.6, 0.3);
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.75, 4.4), paint);
-    body.position.y = 0.55;
-    c.add(body);
-
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.58, 2.0), mat(0x142330, 0.6, 0.15));
-    cabin.position.set(0, 1.15, -0.15);
-    c.add(cabin);
-
-    c.position.set((i % 2 ? 1 : -1) * (7 + Math.random() * 16), 0, 150 - Math.random() * 2800);
-    scene.add(c);
-    cars.push(c);
-  }
-
-  const infiniteGround = new THREE.Mesh(new THREE.PlaneGeometry(4500, 4500), mat(0x454f54, 0.02, 0.99));
-  infiniteGround.rotation.x = -Math.PI / 2;
-  infiniteGround.position.set(0, -0.5, -1200);
-  scene.add(infiniteGround);
-
-  loadCityModels();
-}
-
-async function loadCityModels() {
-  try {
-    loading('DOWNLOADING CITY DISTRICTS', 20);
-    const partNames = ['stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip'];
-    const archives = await Promise.all(partNames.map(async name => {
-      const r = await fetch('./' + name + '?v=stark-city-08');
-      if (!r.ok) throw Error(name + ' missing');
-      return JSZip.loadAsync(await r.arrayBuffer());
-    }));
-
-    const files = new Map(), urls = new Map();
-    for (const archive of archives) {
-      for (const f of Object.values(archive.files)) {
-        if (f.dir || !f.name.startsWith('city/')) continue;
-        const base = f.name.split('/').pop();
-        const bytes = await f.async('uint8array');
-        files.set(f.name, bytes);
-        if (!base.endsWith('.gltf')) {
-          urls.set(base, URL.createObjectURL(new Blob([bytes])));
-        }
-      }
-    }
-
-    const manager = new THREE.LoadingManager();
-    manager.setURLModifier(url => urls.get(decodeURIComponent(url.split('/').pop().split('?')[0])) || url);
-    const loader = new GLTFLoader(manager);
-
-    const loadModel = async name => new Promise((resolve, reject) => {
-      const bytes = files.get('city/' + name + '.gltf');
-      if (!bytes) { reject(Error('Missing ' + name)); return; }
-      loader.parse(new TextDecoder().decode(bytes), '', g => resolve(g.scene), reject);
+  attach(el) {
+    el.style.touchAction = 'none';
+    el.addEventListener('pointerdown', e => { this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); el.setPointerCapture(e.pointerId); if (this.pointers.size === 2) this.pinch = this._span(); });
+    el.addEventListener('pointermove', e => {
+      const p = this.pointers.get(e.pointerId); if (!p) return;
+      const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+      if (this.pointers.size >= 2) { const s = this._span(); this.userDist = clamp(this.userDist * (this.pinch / Math.max(s, 1)), 0.6, 2.2); this.pinch = s; }
+      else { this.yaw -= dx * 0.006; this.pitch = clamp(this.pitch + dy * 0.004, -0.3, 1.0); }
     });
+    const up = e => { this.pointers.delete(e.pointerId); };
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    el.addEventListener('wheel', e => { this.userDist = clamp(this.userDist * (1 + e.deltaY * 0.001), 0.6, 2.2); }, { passive: true });
+  }
+  _span() { const a = [...this.pointers.values()]; return a.length < 2 ? 1 : Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); }
+  bump(amount) { this.shake = Math.max(this.shake, amount); }
 
-    loading('BUILDING MANHATTAN CANYON', 40);
-    const [large, medium, small] = await Promise.all([
-      loadModel('Building_Large_2'),
-      loadModel('Building_Medium_2_001'),
-      loadModel('Building_Small_1')
-    ]);
-
-    const templates = [large, medium, small];
-
-    // Primary Avenue Skyscraper Frontage (Surrounding player completely)
-    for (let block = -4; block < 36; block++) {
-      const z = -block * 78;
-      for (const side of [-1, 1]) {
-        const template = templates[Math.abs(block * 3 + (side > 0 ? 1 : 0)) % 3];
-        const model = template.clone(true);
-        const raw = new THREE.Box3().setFromObject(model);
-        const rawSize = raw.getSize(new THREE.Vector3());
-        const targetHeight = Math.abs(block) % 5 === 0 ? 75 : (Math.abs(block) % 3 === 0 ? 56 : 44);
-        model.scale.setScalar(targetHeight / Math.max(1, rawSize.y));
-
-        const box = new THREE.Box3().setFromObject(model);
-        const center = box.getCenter(new THREE.Vector3());
-        const x = side * (46 + (Math.abs(block) % 4) * 4);
-        model.position.set(x - center.x, -box.min.y, z - center.z);
-        model.rotation.y = side < 0 ? 0 : Math.PI;
-        scene.add(model);
-        city.push(model);
-      }
-    }
-
-    // Outer Skyline Blocks
-    for (let i = 0; i < 35; i++) {
-      const template = templates[i % 3];
-      const model = template.clone(true);
-      const raw = new THREE.Box3().setFromObject(model);
-      const size = raw.getSize(new THREE.Vector3());
-      const h = 75 + (i % 7) * 16;
-      model.scale.setScalar(h / Math.max(1, size.y));
-
-      const box = new THREE.Box3().setFromObject(model);
-      const center = box.getCenter(new THREE.Vector3());
-      const side = i % 2 === 0 ? -1 : 1;
-      const depth = 200 - (i % 15) * 180;
-      model.position.set(side * (120 + (i % 5) * 22) - center.x, -box.min.y, depth - center.z);
-      model.rotation.y = side < 0 ? 0 : Math.PI;
-      scene.add(model);
-      city.push(model);
-    }
-
-    for (const u of urls.values()) URL.revokeObjectURL(u);
-    loading('DOWNTOWN SKYLINE READY', 55);
-  } catch (err) {
-    console.error('City asset loading error:', err);
-    loading('FALLBACK SKYLINE ACTIVE', 45);
+  update(dt, target, { flying, boost, speed }) {
+    const want = (flying ? 13 : 8) * this.userDist * (boost ? 1.25 : 1);
+    this.curDist = THREE.MathUtils.damp(this.curDist, want, 3, dt);
+    const focus = this._tmp.set(target.x, target.y + (flying ? 1.1 : 1.35), target.z);
+    const off = this._dir.set(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch) + (flying ? 0.12 : 0.18), Math.cos(this.yaw) * Math.cos(this.pitch)).normalize();
+    // Collision: pull the camera in if a building is between player and camera.
+    const hit = this.city.raycast(focus, off, this.curDist + 0.5);
+    const d = Math.max(1.2, Math.min(this.curDist, hit - 0.6));
+    const desired = focus.clone().addScaledVector(off, d); desired.y = Math.max(desired.y, 0.6);
+    // Snap in quickly when blocked, ease out when free.
+    const rate = d < this.curDist ? 18 : 7;
+    this.pos.lerp(desired, Math.min(1, dt * rate));
+    this.camera.position.copy(this.pos);
+    if (this.shake > 0.001) { this.camera.position.x += (Math.random() - .5) * this.shake; this.camera.position.y += (Math.random() - .5) * this.shake; this.shake *= Math.pow(0.02, dt); }
+    this.camera.lookAt(focus.x, focus.y + 0.1, focus.z);
+    const fov = 62 + (boost ? 14 : 0) + Math.min(8, speed * 0.08);
+    this.camera.fov = THREE.MathUtils.damp(this.camera.fov, fov, 4, dt); this.camera.updateProjectionMatrix();
   }
 }
 
-async function loadSuitAndAnimations() {
-  loading('INITIALIZING STARK ARMORY', 60);
-  try {
-    const [sourceRes, textRes] = await Promise.all([
-      fetch('./source.zip'),
-      fetch('./textures.zip')
-    ]);
 
-    if (!sourceRes.ok || !textRes.ok) throw Error('source.zip or textures.zip missing');
+// ===== combat/RepulsorSystem.js =====
 
-    const [sourceZip, textZip] = await Promise.all([
-      JSZip.loadAsync(await sourceRes.arrayBuffer()),
-      JSZip.loadAsync(await textRes.arrayBuffer())
-    ]);
-
-    const fbxFile = Object.values(sourceZip.files).find(x => !x.dir && /\.fbx$/i.test(x.name));
-    if (!fbxFile) throw Error('FBX not found in source.zip');
-
-    const modelURL = URL.createObjectURL(await fbxFile.async('blob'));
-    const textureMap = new Map();
-    for (const e of Object.values(textZip.files)) {
-      if (e.dir || !/\.(png|jpe?g|tga)$/i.test(e.name)) continue;
-      textureMap.set(e.name.split('/').pop().split('\\').pop(), URL.createObjectURL(await e.async('blob')));
+// Milestone-1 port of the original FIRE button (pooled: no geometry/material created per shot).
+class RepulsorSystem {
+  constructor(scene) {
+    this.scene = scene; this.energy = 100; this.last = 0; this.shots = [];
+    this.geo = new THREE.SphereGeometry(0.16, 8, 8); this.mat = new THREE.MeshBasicMaterial({ color: 0x8ff0ff, fog: false });
+    this.pool = [];
+  }
+  fire(origins, dir) {
+    const now = performance.now();
+    if (this.energy < 6 || now - this.last < 220) return false;
+    this.last = now; this.energy -= 6;
+    for (const o of origins) {
+      const m = this.pool.pop() || new THREE.Mesh(this.geo, this.mat); m.position.copy(o); this.scene.add(m);
+      this.shots.push({ m, v: dir.clone().multiplyScalar(120), life: 2.2 });
     }
-
-    loading('MOUNTING MARK 85 ARMURE', 75);
-    const manager = new THREE.LoadingManager();
-    manager.setURLModifier(url => textureMap.get(decodeURIComponent(url.split('/').pop().split('\\').pop())) || url);
-
-    const fbxLoader = new FBXLoader(manager);
-    fbxLoader.load(modelURL, async obj => {
-      iron = obj;
-      const box = new THREE.Box3().setFromObject(iron);
-      const size = box.getSize(new THREE.Vector3());
-      const center = box.getCenter(new THREE.Vector3());
-      const maxDim = Math.max(size.x, size.y, size.z);
-
-      iron.position.sub(center);
-      iron.scale.setScalar(3.2 / maxDim);
-      iron.rotation.y = 0;
-
-      iron.traverse(o => {
-        if (o.isMesh) {
-          suitMeshes.push(o);
-          o.frustumCulled = true;
-          if (o.material) {
-            const mats = Array.isArray(o.material) ? o.material : [o.material];
-            mats.forEach(m => {
-              m.metalness = Math.max(m.metalness || 0, 0.88);
-              m.roughness = clamp(m.roughness || 0.35, 0.18, 0.45);
-              m.envMapIntensity = 1.6;
-            });
-          }
-        }
-      });
-
-      // Arc Reactor and Boot Thruster Glow
-      const glowMat = new THREE.MeshBasicMaterial({color: 0x47e8ff});
-      const arc = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 16), glowMat);
-      arc.position.set(0, 1.45, 0.18);
-      iron.add(arc);
-
-      const bootL = new THREE.PointLight(0x00e5ff, 0, 5);
-      bootL.position.set(-0.25, 0.1, 0);
-      iron.add(bootL);
-      thrusterLights.push(bootL);
-
-      const bootR = new THREE.PointLight(0x00e5ff, 0, 5);
-      bootR.position.set(0.25, 0.1, 0);
-      iron.add(bootR);
-      thrusterLights.push(bootR);
-
-      // Spawn in center of Manhattan Avenue
-      iron.position.set(0, 0, -180);
-      scene.add(iron);
-      URL.revokeObjectURL(modelURL);
-
-      // Setup Animation Mixer & Extract KinemIQ motion captures
-      mixer = new THREE.AnimationMixer(iron);
-
-      await tryLoadAnimationClips(fbxLoader);
-
-      loading('MARK 85 ONLINE', 100);
-      setTimeout(() => $('loading').classList.add('hide'), 500);
-    }, undefined, err => {
-      console.warn('Suit FBX fallback triggered:', err);
-      setupFallbackIronMan();
-    });
-  } catch (e) {
-    console.warn('Suit extraction failed, initiating fallback:', e);
-    setupFallbackIronMan();
+    return true;
   }
-}
-
-async function tryLoadAnimationClips(loader) {
-  try {
-    loading('SYNCING FLIGHT & COMBAT RIG', 88);
-    const animRes = await fetch('./stark-animation-assets.zip');
-    if (!animRes.ok) return;
-
-    const animZip = await JSZip.loadAsync(await animRes.arrayBuffer());
-    const animFiles = Object.values(animZip.files).filter(f => !f.dir && /\.fbx$/i.test(f.name));
-
-    for (const f of animFiles) {
-      const blob = await f.async('blob');
-      const url = URL.createObjectURL(blob);
-      const clipObj = await new Promise(res => loader.load(url, res, undefined, () => res(null)));
-      URL.revokeObjectURL(url);
-
-      if (clipObj && clipObj.animations && clipObj.animations.length > 0) {
-        const rawName = f.name.toLowerCase();
-        let actionKey = 'idle';
-        if (rawName.includes('walk')) actionKey = 'walk';
-        else if (rawName.includes('run')) actionKey = 'run';
-        else if (rawName.includes('fly') || rawName.includes('hover')) actionKey = 'fly';
-
-        const clip = clipObj.animations[0];
-        const action = mixer.clipAction(clip);
-        animActions[actionKey] = action;
-      }
+  update(dt, regenBlocked) {
+    if (!regenBlocked) this.energy = Math.min(100, this.energy + dt * 6);
+    for (let i = this.shots.length - 1; i >= 0; i--) {
+      const s = this.shots[i]; s.m.position.addScaledVector(s.v, dt);
+      if ((s.life -= dt) <= 0) { this.scene.remove(s.m); this.pool.push(s.m); this.shots.splice(i, 1); }
     }
-
-    if (animActions['idle']) {
-      animActions['idle'].play();
-      currentAnim = 'idle';
-    }
-  } catch (err) {
-    console.warn('Animation pack parse notice:', err);
   }
 }
 
-function playAnimation(name) {
-  if (!mixer) return;
-  if (currentAnim === name) return;
 
-  const nextAction = animActions[name];
-  const prevAction = animActions[currentAnim];
+// ===== ui/HUD.js =====
+const $ = id => document.getElementById(id);
 
-  if (nextAction) {
-    nextAction.reset();
-    nextAction.fadeIn(0.25);
-    nextAction.play();
-    if (prevAction) prevAction.fadeOut(0.25);
-    currentAnim = name;
+// All DOM/touch handling. Joystick and buttons use pointer capture so they never leak into the camera swipe.
+class HUD {
+  constructor() {
+    this.steer = { x: 0, y: 0 };
+    this.input = { run: false, boost: false, hover: false, up: 0, down: 0 };
+    this.handlers = {};
+    this._joystick(); this._buttons();
+  }
+  on(name, fn) { this.handlers[name] = fn; }
+  setLoading(text, pct) { $('loadtext').textContent = text; if (pct != null) $('loadbar').style.width = pct + '%'; }
+  logError(msg) { const d = document.createElement('div'); d.textContent = '⚠ ' + msg.slice(0, 120); $('errors').appendChild(d); }
+  setAssetStatus(ok, bad) { $('assetstat').textContent = `ASSETS ${ok}${bad ? ' · ' + bad + ' FAILED' : ''}`; $('assetstat').style.color = bad ? '#ff9b91' : ''; }
+  hideLoading() { $('loading').classList.add('hide'); }
+  toast(t) { const e = $('toast'); e.textContent = t; e.style.opacity = 1; clearTimeout(this._t); this._t = setTimeout(() => e.style.opacity = 0, 1300); }
+  setFlightUI(flying) {
+    for (const id of ['fly', 'run']) $(id).hidden = flying;
+    for (const id of ['land', 'hover', 'boost', 'fire', 'up', 'down']) $(id).hidden = !flying;
+  }
+  readout(mode, alt, speedKmh, energy) {
+    $('mode').textContent = mode; $('alt').textContent = alt < 0.5 ? 'GROUND' : Math.round(alt) + ' M';
+    $('spd').textContent = Math.round(speedKmh) + ' KM/H'; $('nrg').textContent = Math.round(energy);
+  }
+  _joystick() {
+    const joy = $('joy'), stick = $('stick'); let pid = null;
+    const move = e => {
+      const r = joy.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2), max = r.width * 0.34, len = Math.hypot(dx, dy), k = Math.min(1, max / (len || 1));
+      this.steer.x = dx * k / max; this.steer.y = -dy * k / max; stick.style.transform = `translate(${dx * k}px,${dy * k}px)`;
+    };
+    joy.addEventListener('pointerdown', e => { pid = e.pointerId; joy.setPointerCapture(pid); move(e); });
+    joy.addEventListener('pointermove', e => { if (e.pointerId === pid) move(e); });
+    const end = e => { if (e.pointerId !== pid) return; pid = null; this.steer.x = this.steer.y = 0; stick.style.transform = 'translate(0,0)'; };
+    joy.addEventListener('pointerup', end); joy.addEventListener('pointercancel', end);
+  }
+  _hold(id, key, val = 1) {
+    const b = $(id), set = v => { this.input[key] = v ? val : (typeof val === 'number' ? 0 : false); b.classList.toggle('on', !!v); };
+    b.addEventListener('pointerdown', e => { b.setPointerCapture(e.pointerId); set(true); });
+    for (const ev of ['pointerup', 'pointercancel']) b.addEventListener(ev, () => set(false));
+  }
+  _buttons() {
+    $('run').addEventListener('click', () => { this.input.run = !this.input.run; $('run').classList.toggle('on', this.input.run); this.toast(this.input.run ? 'RUN MODE' : 'WALK MODE'); });
+    $('hover').addEventListener('click', () => { this.input.hover = !this.input.hover; $('hover').classList.toggle('on', this.input.hover); this.toast(this.input.hover ? 'HOVER ENGAGED' : 'HOVER OFF'); });
+    $('fly').addEventListener('click', () => this.handlers.fly && this.handlers.fly());
+    $('land').addEventListener('click', () => this.handlers.land && this.handlers.land());
+    $('fire').addEventListener('click', () => this.handlers.fire && this.handlers.fire());
+    this._hold('boost', 'boost', true); this._hold('up', 'up', 1); this._hold('down', 'down', 1);
   }
 }
 
-function setupFallbackIronMan() {
-  loading('TACTICAL PROTOCOL ACTIVE', 100);
-  const root = new THREE.Group();
-  const red = mat(0x9d1c1c, 0.85, 0.25);
-  const gold = mat(0xd4a537, 0.9, 0.22);
-  const glow = new THREE.MeshBasicMaterial({color: 0x5feaff});
 
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.95, 0.4), red);
-  torso.position.y = 1.35;
-  root.add(torso);
+// ===== main.js =====
 
-  const arc = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.05, 16), glow);
-  arc.rotation.x = Math.PI / 2;
-  arc.position.set(0, 1.45, 0.22);
-  root.add(arc);
+const hud = new HUD();
+const failures = [];
+async function boot() {
+  const perf = new PerformanceManager();
+  const sm = new SceneManager(perf);
+  const assets = new AssetManager({ onError: m => { failures.push(m); hud.logError(m); }, onStatus: (ok, bad) => hud.setAssetStatus(ok, bad) });
+  const city = new CityManager(sm.scene, assets, perf);
+  const hero = new IronMan(assets, perf);
+  const move = new MovementController();
+  const cam = new ThirdPersonCamera(sm.camera, city);
+  const rep = new RepulsorSystem(sm.scene);
+  cam.attach(sm.renderer.domElement);
+  sm.scene.add(hero.root);
+  perf.onTierChange = t => { sm.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio)); city.setRadii(t.nearRadius, t.farRadius); hud.toast('QUALITY: ' + t.name.toUpperCase()); };
 
-  const helm = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.44, 0.4), gold);
-  helm.position.y = 2.0;
-  root.add(helm);
+  hud.setLoading('READING ASSET ARCHIVES', 2);
+  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
+  // Hero first (playable immediately), city second; either failure is reported and never blocks the loop.
+  let heroOk = true, cityOk = true;
+  await Promise.all([
+    hero.load((t, p) => hud.setLoading(t, p * 0.45)).catch(e => { heroOk = false; hud.setLoading('MARK 85 ERROR: ' + e.message, 100); }),
+    city.load((t, p) => hud.setLoading(t, 45 + p * 0.55)).catch(e => { cityOk = false; hud.logError('CITY: ' + e.message); }),
+  ]);
+  assets.release();
+  hud.setLoading(failures.length ? `STARTED WITH ${failures.length} ASSET ERROR(S)` : 'ALL SYSTEMS ONLINE', 100);
+  setTimeout(() => hud.hideLoading(), failures.length ? 2500 : 500);
+  hud.toast(heroOk && cityOk ? 'MARK 85 ONLINE' : 'DEGRADED MODE — SEE ERRORS');
 
-  root.limbs = [];
-  for (const side of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.8, 8), red);
-    arm.position.set(side * 0.55, 1.25, 0);
-    root.add(arm);
-
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.1, 1.0, 8), gold);
-    leg.position.set(side * 0.22, 0.5, 0);
-    root.add(leg);
-
-    root.limbs.push({arm, leg, side});
-  }
-
-  root.position.set(0, 0, -180);
-  iron = root;
-  scene.add(iron);
-  setTimeout(() => $('loading').classList.add('hide'), 600);
-}
-
-function controls() {
-  const joy = $('joy'), stick = $('stick');
-  let active = false, pid = null;
-
-  function move(e) {
-    const r = joy.getBoundingClientRect();
-    const dx = e.clientX - (r.left + r.width / 2);
-    const dy = e.clientY - (r.top + r.height / 2);
-    const max = r.width * 0.38;
-    const len = Math.hypot(dx, dy);
-    const k = Math.min(1, max / (len || 1));
-    steer.x = dx * k / max;
-    steer.y = -dy * k / max; // Upward swipe moves forward
-    stick.style.transform = `translate(${dx * k}px, ${dy * k}px)`;
-  }
-
-  joy.addEventListener('pointerdown', e => {
-    active = true;
-    pid = e.pointerId;
-    joy.setPointerCapture(pid);
-    move(e);
+  hud.on('fly', () => { if (move.takeoff()) { hud.setFlightUI(true); cam.bump(0.05); hud.toast('TAKEOFF — THRUSTERS ENGAGED'); } });
+  hud.on('land', () => { if (move.land()) hud.toast('LANDING'); });
+  const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
+  hud.on('fire', () => {
+    if (!move.flying) return;
+    dir.set(-Math.sin(cam.yaw), -Math.sin(cam.pitch) * 0.3, -Math.cos(cam.yaw)).normalize();
+    const o = [hero.worldPosOf('lHand', new THREE.Vector3()), hero.worldPosOf('rHand', new THREE.Vector3())];
+    if (rep.fire(o, dir)) cam.bump(0.03);
   });
 
-  joy.addEventListener('pointermove', e => {
-    if (active && e.pointerId === pid) move(e);
-  });
-
-  const end = e => {
-    if (e.pointerId !== pid) return;
-    active = false;
-    pid = null;
-    steer = {x: 0, y: 0};
-    stick.style.transform = 'translate(0, 0)';
-  };
-
-  joy.addEventListener('pointerup', end);
-  joy.addEventListener('pointercancel', end);
-
-  $('run').onclick = () => {
-    run = !run;
-    $('run').classList.toggle('on', run);
-    toast(run ? 'SUPERSONIC SPRINT' : 'TACTICAL WALK');
-  };
-
-  $('fly').onclick = () => {
-    if (flight) return;
-    flight = true;
-    boost = false;
-    ['fly', 'run'].forEach(id => $(id).style.display = 'none');
-    ['land', 'hover', 'boost', 'fire'].forEach(id => $(id).style.display = '');
-    toast('REPULSOR THRUSTERS ENGAGED');
-    playAnimation('fly');
-  };
-
-  $('land').onclick = () => {
-    flight = false;
-    boost = false;
-    hover = false;
-    ['land', 'hover', 'boost', 'fire'].forEach(id => $(id).style.display = 'none');
-    ['fly', 'run'].forEach(id => $(id).style.display = '');
-    toast('LANDING COMPLETE — WALK MODE');
-    playAnimation('idle');
-  };
-
-  $('hover').onclick = () => {
-    hover = !hover;
-    $('hover').classList.toggle('on', hover);
-    toast(hover ? 'HOVER STABILIZATION' : 'HOVER DISENGAGED');
-  };
-
-  $('boost').addEventListener('pointerdown', () => boost = true);
-  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => {
-    $('boost').addEventListener(ev, () => boost = false);
-  });
-
-  $('fire').onclick = fire;
+  const clock = new THREE.Clock();
+  (function frame() {
+    requestAnimationFrame(frame);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    perf.frame(dt);
+    const inp = { x: hud.steer.x, y: hud.steer.y, run: hud.input.run, boost: hud.input.boost && move.mode === MODE.FLY && rep.energy > 1, hover: hud.input.hover, up: hud.input.up, down: hud.input.down };
+    move.update(dt, inp, cam.yaw, city);
+    if (move.landed) { move.landed = false; hud.setFlightUI(false); hud.toast('LANDED — WALK MODE'); cam.bump(0.06); }
+    if (move.hitLimit) hud.toast('EDGE OF THE MAP');
+    hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading;
+    hero.tilt.rotation.set(move.pitch, 0, move.bank);
+    hero.update(dt, move.flying ? 1 : 0);
+    city.update(move.pos);
+    rep.update(dt, inp.boost); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
+    cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed });
+    hud.readout(move.mode, move.pos.y, move.speed * 3.6, rep.energy);
+    sm.render();
+  })();
 }
-
-function setupCameraSwipe() {
-  const el = renderer.domElement;
-  el.style.touchAction = 'none';
-
-  el.addEventListener('pointerdown', e => {
-    draggingCamera = true;
-    lastPointer.x = e.clientX;
-    lastPointer.y = e.clientY;
-    el.setPointerCapture(e.pointerId);
-  });
-
-  el.addEventListener('pointermove', e => {
-    if (!draggingCamera) return;
-    const dx = e.clientX - lastPointer.x;
-    const dy = e.clientY - lastPointer.y;
-    lastPointer.x = e.clientX;
-    lastPointer.y = e.clientY;
-    cameraYaw -= dx * 0.006;
-    cameraPitch = clamp(cameraPitch + dy * 0.004, -0.35, 1.15);
-  });
-
-  const stop = () => { draggingCamera = false; };
-  el.addEventListener('pointerup', stop);
-  el.addEventListener('pointercancel', stop);
-}
-
-function toast(t) {
-  $('toast').textContent = t;
-  $('toast').style.opacity = 1;
-  clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => $('toast').style.opacity = 0, 1200);
-}
-
-function fire() {
-  if (!flight || energy < 8 || performance.now() - shotAt < 220) return;
-  shotAt = performance.now();
-  energy -= 8;
-
-  const m = new THREE.Mesh(
-    new THREE.SphereGeometry(0.2, 12, 12),
-    new THREE.MeshBasicMaterial({color: 0x55f2ff})
-  );
-  m.position.copy(iron ? iron.position : new THREE.Vector3());
-  m.position.y += 1.4;
-  scene.add(m);
-
-  // Fire in character facing direction
-  const fireDir = new THREE.Vector3(0, 0, 1).applyQuaternion(iron.quaternion);
-  shots.push({m, v: fireDir.multiplyScalar(140), life: 100});
-  toast('REPULSOR DISCHARGE');
-}
-
-function resize() {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-}
-
-function animate() {
-  requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.05);
-
-  if (mixer) mixer.update(dt);
-
-  if (iron) {
-    const isMoving = Math.hypot(steer.x, steer.y) > 0.08;
-
-    if (flight) {
-      thrusterLights.forEach(l => l.intensity = THREE.MathUtils.damp(l.intensity, boost ? 4.5 : 2.0, 5, dt));
-
-      const flySpeed = boost ? 90 : (hover ? 12 : 38);
-      const verticalSpeed = boost ? 40 : 25;
-
-      if (!hover) {
-        iron.position.y = THREE.MathUtils.damp(iron.position.y, clamp(iron.position.y + steer.y * verticalSpeed * dt, 2.5, 400), 4, dt);
-      }
-
-      if (isMoving) {
-        // Flight movement relative to camera yaw
-        const moveAngle = Math.atan2(steer.x, steer.y) + cameraYaw;
-        iron.position.x += Math.sin(moveAngle) * flySpeed * dt;
-        iron.position.z -= Math.cos(moveAngle) * flySpeed * dt;
-
-        // Smooth flight orientation & banking roll
-        const targetRotY = moveAngle;
-        const targetBank = -steer.x * 0.45;
-        iron.rotation.y = THREE.MathUtils.damp(iron.rotation.y, targetRotY, 6, dt);
-        iron.rotation.z = THREE.MathUtils.damp(iron.rotation.z, targetBank, 5, dt);
-        iron.rotation.x = THREE.MathUtils.damp(iron.rotation.x, steer.y * 0.25, 4, dt);
-      } else {
-        iron.rotation.z = THREE.MathUtils.damp(iron.rotation.z, 0, 5, dt);
-        iron.rotation.x = THREE.MathUtils.damp(iron.rotation.x, 0, 5, dt);
-      }
-    } else {
-      thrusterLights.forEach(l => l.intensity = THREE.MathUtils.damp(l.intensity, 0, 6, dt));
-
-      const pace = run ? 18.0 : 7.5;
-
-      if (isMoving) {
-        // True Third-Person Character Rotation towards input direction relative to Camera
-        const moveAngle = Math.atan2(steer.x, steer.y) + cameraYaw;
-        const targetQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), moveAngle);
-        iron.quaternion.slerp(targetQuat, Math.min(1, dt * 14));
-
-        // Advance in facing direction
-        iron.position.x += Math.sin(moveAngle) * pace * dt;
-        iron.position.z -= Math.cos(moveAngle) * pace * dt;
-
-        // Play Walk / Run animation state
-        playAnimation(run ? 'run' : 'walk');
-
-        // Procedural limb swing if fallback model is active
-        if (iron.limbs) {
-          const t = clock.elapsedTime * (run ? 14 : 7);
-          iron.limbs.forEach(l => {
-            l.arm.rotation.x = Math.sin(t + (l.side > 0 ? Math.PI : 0)) * 0.6;
-            l.leg.rotation.x = -Math.sin(t + (l.side > 0 ? Math.PI : 0)) * 0.6;
-          });
-        }
-      } else {
-        playAnimation('idle');
-        if (iron.limbs) {
-          iron.limbs.forEach(l => {
-            l.arm.rotation.x = THREE.MathUtils.damp(l.arm.rotation.x, 0, 5, dt);
-            l.leg.rotation.x = THREE.MathUtils.damp(l.leg.rotation.x, 0, 5, dt);
-          });
-        }
-      }
-
-      // Keep feet firmly planted on pavement
-      iron.position.y = THREE.MathUtils.damp(iron.position.y, 0, 10, dt);
-    }
-
-    iron.updateMatrixWorld(true);
-  }
-
-  // Smooth Third-Person Spring-Arm Follow Camera
-  const focus = iron ? iron.position.clone() : new THREE.Vector3(0, 1, 0);
-  focus.y += flight ? 1.4 : 1.8;
-
-  const currentCamDist = flight ? (boost ? 14 : 11) : (run ? 8.5 : 7.2);
-  const orbitOffset = new THREE.Vector3(
-    Math.sin(cameraYaw) * Math.cos(cameraPitch) * currentCamDist,
-    Math.sin(cameraPitch) * currentCamDist + 1.2,
-    Math.cos(cameraYaw) * Math.cos(cameraPitch) * currentCamDist
-  );
-
-  const desiredCamPos = focus.clone().add(orbitOffset);
-  camera.position.lerp(desiredCamPos, Math.min(1, dt * 8));
-  camera.lookAt(focus);
-
-  // Update Moving Traffic
-  for (const c of cars) {
-    c.position.z += dt * 18;
-    if (c.position.z > 350) c.position.z = -2500;
-  }
-
-  // Update Repulsor Projectiles
-  for (let i = shots.length - 1; i >= 0; i--) {
-    const s = shots[i];
-    s.m.position.addScaledVector(s.v, dt);
-    if (--s.life <= 0) {
-      scene.remove(s.m);
-      s.m.geometry.dispose();
-      shots.splice(i, 1);
-    }
-  }
-
-  energy = clamp(energy + (boost ? -dt * 15 : dt * 6), 0, 100);
-
-  $('mode').textContent = flight ? (hover ? 'HOVER' : 'FLIGHT') : (run ? 'SPRINT' : 'WALK');
-  $('alt').textContent = flight ? Math.round(iron ? iron.position.y * 3.2 : 0) + ' M' : 'GROUND';
-  $('spd').textContent = flight ? Math.round(boost ? 640 : (hover ? 20 : 180)) : Math.round(Math.hypot(steer.x, steer.y) * (run ? 24 : 10));
-
-  renderer.render(scene, camera);
-}
-
-init();
+boot().catch(e => { console.error(e); hud.setLoading('STARTUP ERROR: ' + (e.message || e), 100); hud.logError(String(e.stack || e).split('\n')[0]); });
