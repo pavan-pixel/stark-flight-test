@@ -66,7 +66,7 @@ class AssetManager {
     let i = 0;
     await Promise.all(names.map(async n => {
       try {
-        const r = await fetch('./' + n + '?v=m10'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
+        const r = await fetch('./' + n + '?v=m13'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
         const z = await JSZip.loadAsync(await r.arrayBuffer());
         for (const f of Object.values(z.files)) if (!f.dir) this.entries.set(lc(base(f.name)), f);
         this._ok(n);
@@ -593,7 +593,7 @@ class IronMan {
   }
 
   // Thruster glow follows the real hand/foot bones; intensity = flight state.
-  update(dt, flightAmount, speed = 0) {
+  update(dt, flightAmount, speed = 0, boost = false) {
     this.flying += (flightAmount - this.flying) * Math.min(1, dt * 6);
     if (this.mixer) {
       this.mixer.update(dt);
@@ -605,9 +605,9 @@ class IronMan {
       const b = this.bones[s.userData.bone]; s.visible = !!b && this.flying > 0.05;
       if (!s.visible) continue;
       b.getWorldPosition(p); this.root.worldToLocal(p); s.position.copy(p);
-      const foot = s.userData.bone.endsWith('Foot'); s.scale.setScalar((foot ? 0.9 : 0.55) * this.flying * (0.9 + Math.random() * 0.2));
+      const foot = s.userData.bone.endsWith('Foot'); s.scale.setScalar((foot ? 0.9 : 0.55) * this.flying * (1 + Math.min(1.2, speed * 0.02) + (boost ? 1.5 : 0)) * (0.9 + Math.random() * 0.2));
     }
-    if (this.chestLight) { this.chestLight.position.set(0, 1.4, -0.25); this.chestLight.intensity = 0.6 + this.flying * 1.2; }
+    if (this.chestLight) { this.chestLight.position.set(0, 1.4, -0.25); this.chestLight.intensity = 0.6 + this.flying * 1.2 + (boost ? 4 : 0); }
   }
 
   worldPosOf(id, out) { const b = this.bones[id]; if (b) { b.getWorldPosition(out); return out; } return out.copy(this.root.position).add(new THREE.Vector3(0, 1.3, 0)); }
@@ -625,10 +625,10 @@ class MovementController {
     this.pos = new THREE.Vector3(0, 0, 0); this.vel = new THREE.Vector3();
     this.heading = 0; this.mode = MODE.WALK; this.targetAlt = 0; this.speed = 0; this.bank = 0; this.pitch = 0; this.hitLimit = false;
   }
-  takeoff() { if (this.mode === MODE.WALK) { this.mode = MODE.TAKEOFF; this.targetAlt = 14; this.takeoffT = 0; return true; } return false; }
+  takeoff() { if (this.mode === MODE.WALK) { this.mode = MODE.TAKEOFF; this.targetAlt = 70; this.takeoffT = 0; return true; } return false; }
   land() { if (this.mode === MODE.FLY || this.mode === MODE.TAKEOFF) { this.mode = MODE.LANDING; this.targetAlt = 0; return true; } return false; }
   // M1: the game starts in the air. LAND puts Mark 85 on the nearest surface (street or rooftop).
-  startFlying() { this.mode = MODE.FLY; this.pos.y = 14; this.targetAlt = 14; this.landed = false; }
+  startFlying() { this.mode = MODE.FLY; this.pos.y = 70; this.targetAlt = 70; this.landed = false; }
   get flying() { return this.mode !== MODE.WALK; }
 
   update(dt, inp, camYaw, city) {
@@ -639,10 +639,10 @@ class MovementController {
     let top = airborne ? (inp.boost ? FLY_BOOST : (inp.hover ? 4 : FLY)) : (inp.run ? RUN : WALK);
     if (this.mode === MODE.TAKEOFF || this.mode === MODE.LANDING) top = Math.min(top, 8);
     const want = dir.multiplyScalar(top * mag);
-    const k = Math.min(1, dt * (airborne ? 2.2 : 9));
+    const k = Math.min(1, dt * (airborne ? 4 : 9));
     this.vel.x += (want.x - this.vel.x) * k; this.vel.z += (want.z - this.vel.z) * k;
     const prevHeading = this.heading;
-    if (mag > 0.08) { const a = Math.atan2(-dir.x, -dir.z); let d = a - this.heading; d = Math.atan2(Math.sin(d), Math.cos(d)); this.heading += d * Math.min(1, dt * (airborne ? 4 : 10)); }
+    if (mag > 0.08) { const a = Math.atan2(-dir.x, -dir.z); let d = a - this.heading; d = Math.atan2(Math.sin(d), Math.cos(d)); this.heading += d * Math.min(1, dt * (airborne ? 7 : 10)); }
     this.pos.x += this.vel.x * dt; this.pos.z += this.vel.z * dt;
     this.speed = Math.hypot(this.vel.x, this.vel.z);
 
@@ -699,10 +699,10 @@ class ThirdPersonCamera {
   bump(amount) { this.shake = Math.max(this.shake, amount); }
 
   update(dt, target, { flying, boost, speed }) {
-    const want = ((flying ? 13 + Math.min(6, speed * 0.05) : 8)) * this.userDist * (boost ? 1.25 : 1);
+    const want = ((flying ? 26 + Math.min(6, speed * 0.05) : 8)) * this.userDist * (boost ? 1.2 : 1);
     this.curDist = THREE.MathUtils.damp(this.curDist, want, 3, dt);
     const focus = this._tmp.set(target.x, target.y + (flying ? 1.1 : 1.35), target.z);
-    const off = this._dir.set(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch) + (flying ? 0.12 : 0.18), Math.cos(this.yaw) * Math.cos(this.pitch)).normalize();
+    const off = this._dir.set(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch) + (flying ? 0.5 : 0.18), Math.cos(this.yaw) * Math.cos(this.pitch)).normalize();
     // Collision: pull the camera in if a building is between player and camera.
     const hit = this.city.raycast(focus, off, this.curDist + 0.5);
     const d = Math.max(1.2, Math.min(this.curDist, hit - 0.6));
@@ -713,7 +713,7 @@ class ThirdPersonCamera {
     this.camera.position.copy(this.pos);
     if (this.shake > 0.001) { this.camera.position.x += (Math.random() - .5) * this.shake; this.camera.position.y += (Math.random() - .5) * this.shake; this.shake *= Math.pow(0.02, dt); }
     this.camera.lookAt(focus.x, focus.y + 0.1, focus.z);
-    const fov = 62 + (boost ? 14 : 0) + Math.min(8, speed * 0.08);
+    const fov = 70 + (boost ? 18 : 0) + Math.min(16, speed * 0.14);
     this.camera.fov = THREE.MathUtils.damp(this.camera.fov, fov, 4, dt); this.camera.updateProjectionMatrix();
   }
 }
@@ -813,7 +813,7 @@ class RingCourse {
     const r = rng(2031);
     for (let i = 0; i < this.count; i++) {
       const x = (r() * 2 - 1) * WORLD_LIMIT * 0.85, z = (r() * 2 - 1) * WORLD_LIMIT * 0.85;
-      const y = this.city.surfaceAt(x, z) + 8 + r() * 22;
+      const y = this.city.surfaceAt(x, z) + 20 + r() * 60;
       const m = new THREE.Mesh(this.geo, this.mat);
       m.position.set(x, y, z); m.rotation.set(r() * 0.6 - 0.3, r() * Math.PI * 2, 0);
       this.group.add(m); this.rings.push({ m, done: false });
@@ -838,27 +838,32 @@ class RingCourse {
 // ===== effects/WindLines.js =====
 // M4: speed streaks that rush past while flying fast. Plain line geometry, no textures.
 class WindLines {
-  constructor(scene, n = 48) {
+  constructor(scene, n = 80) {
     this.n = n; this.off = []; this.buf = new Float32Array(n * 6); this.seeded = false;
     for (let i = 0; i < n; i++) this.off.push(new THREE.Vector3());
     this.geo = new THREE.BufferGeometry(); this.geo.setAttribute('position', new THREE.BufferAttribute(this.buf, 3));
-    this.mat = new THREE.LineBasicMaterial({ color: 0xbff5ff, transparent: true, opacity: 0.35, depthWrite: false });
+    this.mat = new THREE.LineBasicMaterial({ color: 0xdffbff, transparent: true, opacity: 0.6, depthWrite: false });
     this.lines = new THREE.LineSegments(this.geo, this.mat); this.lines.frustumCulled = false; this.lines.visible = false;
     scene.add(this.lines);
   }
-  _spawn(v) { const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 9; v.set(Math.cos(a) * r, (Math.random() - 0.3) * 6, Math.sin(a) * r); }
+  // Spawn in front of the hero (along its motion) so streaks come at the camera and flash past.
+  _spawn(v, fx, fz) {
+    const ahead = 5 + Math.random() * 8, side = (Math.random() - 0.5) * 12;
+    v.set(fx * ahead - fz * side, (Math.random() - 0.3) * 8, fz * ahead + fx * side);
+  }
   update(dt, pos, vel, active) {
     this.lines.visible = active;
     if (!active) return;
-    if (!this.seeded) { this.off.forEach(v => this._spawn(v)); this.seeded = true; }
-    const sp = Math.hypot(vel.x, vel.z), len = Math.min(10, 1 + sp * 0.12), dl = sp || 1;
+    const sp = Math.hypot(vel.x, vel.z), len = Math.min(14, 3 + sp * 0.2), dl = sp || 1;
+    const fx = vel.x / dl, fz = vel.z / dl;
+    if (!this.seeded) { this.off.forEach(v => this._spawn(v, fx, fz)); this.seeded = true; }
     for (let i = 0; i < this.n; i++) {
       const v = this.off[i];
       v.x -= vel.x * dt; v.z -= vel.z * dt;          // stationary in the world, so the hero rushes past them
-      if (v.length() > 13) this._spawn(v);
+      if (v.length() > 14) this._spawn(v, fx, fz);
       const sx = pos.x + v.x, sy = pos.y + 1.2 + v.y, sz = pos.z + v.z, k = i * 6;
       this.buf[k] = sx; this.buf[k + 1] = sy; this.buf[k + 2] = sz;
-      this.buf[k + 3] = sx - (vel.x / dl) * len; this.buf[k + 4] = sy; this.buf[k + 5] = sz - (vel.z / dl) * len;
+      this.buf[k + 3] = sx - fx * len; this.buf[k + 4] = sy; this.buf[k + 5] = sz - fz * len;
     }
     this.geo.attributes.position.needsUpdate = true;
   }
@@ -920,10 +925,10 @@ async function boot() {
     if (move.landed) { move.landed = false; hud.setFlightUI(false); hud.toast('LANDED — WALK MODE'); cam.bump(0.06); }
     if (move.hitLimit) hud.toast('EDGE OF THE MAP');
     rings.update(dt, move.pos, rep, hud, move.flying);
-    wind.update(dt, move.pos, move.vel, move.flying && move.speed > 25);
+    wind.update(dt, move.pos, move.vel, move.flying && move.speed > 20);
     hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading;
     hero.tilt.rotation.set(move.pitch, 0, move.bank);
-    hero.update(dt, move.flying ? 1 : 0, move.speed);
+    hero.update(dt, move.flying ? 1 : 0, move.speed, inp.boost);
     city.update(move.pos);
     rep.update(dt, inp.boost); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
     cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed });
