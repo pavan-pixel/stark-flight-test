@@ -625,37 +625,70 @@ class NYCWorld {
   constructor(scene, assets, perf, fallbackCity) {
     this.scene=scene; this.assets=assets; this.perf=perf; this.fallbackCity=fallbackCity;
     this.group=new THREE.Group(); this.group.visible=false; scene.add(this.group);
-    this.ready=false; this.bounds=new THREE.Box3();
+    this.ready=false; this.bounds=new THREE.Box3(); this.groundY=0; this.meshCount=0;
   }
   async load(progress=()=>{}) {
     const a=this.assets;
     if(!a.has('newyork.fbx')) return false;
     progress('LOADING NEW YORK WORLD',5);
     const root=await a.loadFBX('NewYork.fbx');
+
+    // The supplied FBX is authored with its vertical axis inverted for Three.js.
+    // Flip the complete world 180 degrees around X before calculating its ground plane.
+    root.rotation.x=Math.PI;
     root.updateMatrixWorld(true);
     this.bounds.setFromObject(root);
     const size=this.bounds.getSize(new THREE.Vector3());
     const span=Math.max(size.x,size.z);
     if(!Number.isFinite(span)||span<1) throw new Error('NYC model has invalid dimensions');
+
     const targetSpan=this.perf.isMobile?1180:1680, scale=targetSpan/span;
-    root.scale.setScalar(scale); root.updateMatrixWorld(true);
+    root.scale.setScalar(scale);
+    root.updateMatrixWorld(true);
     this.bounds.setFromObject(root);
     const center=this.bounds.getCenter(new THREE.Vector3());
-    root.position.x-=center.x; root.position.z-=center.z; root.position.y-=this.bounds.min.y;
+    root.position.x-=center.x;
+    root.position.z-=center.z;
+    root.position.y-=this.bounds.min.y;
     root.updateMatrixWorld(true);
-    let meshCount=0;
+    this.bounds.setFromObject(root);
+    this.groundY=0;
+
+    let meshCount=0, visibleMeshes=0;
     root.traverse(o=>{
-      if(!o.isMesh)return; meshCount++; o.castShadow=false; o.receiveShadow=true;
-      o.frustumCulled=true;
+      if(!o.isMesh)return;
+      meshCount++;
+      o.castShadow=false; o.receiveShadow=true; o.frustumCulled=true;
+      if(o.geometry&&!o.geometry.boundingSphere)o.geometry.computeBoundingSphere();
       const mats=Array.isArray(o.material)?o.material:[o.material];
-      for(const m of mats) if(m){m.envMapIntensity=.48;if(m.isMeshStandardMaterial){m.roughness=Math.max(.28,m.roughness||.65);m.needsUpdate=true;}}
+      for(const m of mats) if(m){
+        m.side=THREE.DoubleSide;
+        m.envMapIntensity=.62;
+        if(m.isMeshStandardMaterial){
+          m.roughness=Math.max(.3,m.roughness||.65);
+          m.metalness=Math.min(.55,m.metalness||0);
+          m.needsUpdate=true;
+        }
+      }
+      if(o.visible)visibleMeshes++;
     });
-    if(!meshCount) throw new Error('NYC FBX contains no renderable meshes');
-    this.group.add(root); this.ready=true; this.group.visible=true;
+    if(!meshCount)throw new Error('NYC FBX contains no renderable meshes');
+    this.meshCount=meshCount;
+    this.group.add(root);
+    this.ready=true;
+    this.group.visible=true;
     this.fallbackCity.group.visible=false;
+    progress('NEW YORK WORLD ONLINE · '+meshCount+' MESHES',100);
     return true;
   }
-  activate(){if(this.ready){this.group.visible=true;this.fallbackCity.group.visible=false;return true;}return false;}
+  activate(){
+    if(this.ready){
+      this.group.visible=true;
+      this.fallbackCity.group.visible=false;
+      return true;
+    }
+    return false;
+  }
 }
 
 // ===== character/IronMan.js =====
@@ -1428,7 +1461,7 @@ async function boot() {
   hud.setLoading(degraded ? 'CORE SYSTEMS READY · LIMITED ASSETS' : 'SYSTEMS ONLINE · READY FOR DEPLOYMENT', 100);
   setTimeout(() => hud.hideLoading(), 900);
   // Start grounded in WALK mode. Flight begins only when the player presses FLY.
-  move.pos.y = city.surfaceAt(move.pos.x, move.pos.z);
+  move.pos.y = nycOk ? nycWorld.groundY : city.surfaceAt(move.pos.x, move.pos.z);
   move.mode = MODE.WALK;
   hud.setFlightUI(false);
   hud.toast(heroOk && cityOk ? "MARK 85 ONLINE" : 'DEGRADED MODE — SEE ERRORS');
@@ -1452,7 +1485,7 @@ async function boot() {
     document.getElementById('jarvisTag').textContent = 'SYSTEM BRIEFING / ' + btn.dataset.topic.toUpperCase();
     if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(v[1]); u.rate = 0.94; u.pitch = 0.88; window.speechSynthesis.speak(u); }
   }));
-  hud.on('start', () => { const selected=document.getElementById('missionSelect')?.value||'city'; if(selected==='city'&&!nycOk){hud.toast('NEW YORK WORLD FAILED TO LOAD — CHECK SYSTEM LOG');hud.logError('NYC world is unavailable; deployment blocked to avoid showing the placeholder city.');return;} missionEnv.setMission(selected); mission.build(selected); if(selected==='city'&&nycOk){nycWorld.activate();move.pos.set(0,0,0);}else{nycWorld.group.visible=false;city.group.visible=selected==='city';move.pos.copy(missionEnv.spawn);} move.vel.set(0,0,0); move.heading=0; move.mode=MODE.WALK; gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); hud.setFlightUI(false); cine.trigger('INTRO', 2.4); });
+  hud.on('start', () => { const selected=document.getElementById('missionSelect')?.value||'city'; if(selected==='city'&&!nycOk){hud.toast('NEW YORK WORLD FAILED TO LOAD — CHECK SYSTEM LOG');hud.logError('NYC world is unavailable; deployment blocked to avoid showing the placeholder city.');return;} missionEnv.setMission(selected); mission.build(selected); if(selected==='city'&&nycOk){nycWorld.activate();move.pos.set(0,nycWorld.groundY,0);}else{nycWorld.group.visible=false;city.group.visible=selected==='city';move.pos.copy(missionEnv.spawn);} move.vel.set(0,0,0); move.heading=0; move.mode=MODE.WALK; gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); hud.setFlightUI(false); cine.trigger('INTRO', 2.4); });
 
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   let cameraMode='THIRD', lockedTarget=null;
