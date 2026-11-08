@@ -13,11 +13,12 @@ function init(){
  clock=new THREE.Clock();scene.add(new THREE.HemisphereLight(0x9dbdff,0x121622,1.7));
  const sun=new THREE.DirectionalLight(0xffd5a0,2.6);sun.position.set(-80,140,70);scene.add(sun);
  const sky=new THREE.Mesh(new THREE.SphereGeometry(1500,24,16),new THREE.MeshBasicMaterial({color:0x101b34,side:THREE.BackSide}));scene.add(sky);
- makeCity();loadSuit();controls();addEventListener('resize',resize);animate();
+ try{makeCity();loadSuit();controls();addEventListener('resize',resize);animate()}catch(err){console.error('STARK INIT FAILED',err);loading('STARTUP ERROR: '+(err.message||err),100)}
 }
 function makeCity(){
  const road=new THREE.Mesh(new THREE.PlaneGeometry(76,1800),mat(0x090f19,.1,.95));road.rotation.x=-Math.PI/2;road.position.set(0,-.08,-650);scene.add(road);
  const pavement=mat(0x394655,.15,.9),lane=new THREE.MeshBasicMaterial({color:0x9aa9b7,transparent:true,opacity:.28});
+ const metal=mat(0x778695,.8,.38);
  for(const side of [-1,1]){const sidewalk=new THREE.Mesh(new THREE.BoxGeometry(12,.45,1800),pavement);sidewalk.position.set(side*44,.08,-650);scene.add(sidewalk)}
  for(const x of [-12,-4,4,12]){const stripe=new THREE.Mesh(new THREE.PlaneGeometry(.14,1750),lane);stripe.rotation.x=-Math.PI/2;stripe.position.set(x,.005,-650);scene.add(stripe)}
 
