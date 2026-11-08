@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>STARK FLIGHT TEST</title>
+<style>
+  :root{color-scheme:dark}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050a12;font-family:system-ui,-apple-system,Segoe UI,sans-serif;touch-action:none}
+  #game{position:fixed;inset:0}
+  canvas{display:block;width:100%;height:100%}
+  #hud{position:fixed;inset:0;pointer-events:none;color:#eaf5ff}
+  .top{position:absolute;top:max(12px,env(safe-area-inset-top));left:14px;right:14px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+  .panel{background:rgba(5,13,25,.72);border:1px solid rgba(92,190,255,.35);border-radius:12px;padding:9px 12px;backdrop-filter:blur(8px);box-shadow:0 0 18px #00aaff18}
+  .brand{font-size:12px;letter-spacing:.2em;font-weight:800;color:#8edbff}
+  .stat{font-size:11px;color:#b9d5e8;margin-top:3px}
+  #status{font-size:11px;color:#9fffd7;text-align:right}
+  #help{position:absolute;top:75px;left:14px;max-width:230px;font-size:10px;line-height:1.45;color:#c5d9e8}
+  #crosshair{position:absolute;left:50%;top:45%;width:22px;height:22px;transform:translate(-50%,-50%);border:1px solid #8bdfff88;border-radius:50%}
+  #crosshair:before,#crosshair:after{content:"";position:absolute;background:#8bdfff88}
+  #crosshair:before{width:34px;height:1px;left:-7px;top:10px}
+  #crosshair:after{height:34px;width:1px;top:-7px;left:10px}
+  #controls{position:absolute;inset:auto 0 max(16px,env(safe-area-inset-bottom)) 0;height:160px;pointer-events:none}
+  #stick{position:absolute;left:18px;bottom:8px;width:124px;height:124px;border-radius:50%;background:#10263a99;border:1px solid #7bcfff88;pointer-events:auto;touch-action:none}
+  #nub{position:absolute;width:48px;height:48px;left:38px;top:38px;border-radius:50%;background:linear-gradient(145deg,#a6eaff,#267aa9);border:2px solid #d9f7ff;box-shadow:0 0 18px #22baff88}
+  .buttons{position:absolute;right:14px;bottom:8px;display:grid;grid-template-columns:repeat(2,68px);gap:9px;pointer-events:auto}
+  button{height:58px;border-radius:14px;border:1px solid #72d5ff99;background:linear-gradient(145deg,#163b55dd,#091827ee);color:#e9f8ff;font-weight:800;font-size:10px;letter-spacing:.06em;box-shadow:0 5px 16px #0008;touch-action:none}
+  button.active{background:linear-gradient(145deg,#a53a28,#511c24);box-shadow:0 0 20px #ff673d88}
+  #fire{border-color:#ff9b6b;background:linear-gradient(145deg,#813a26,#321622)}
+  #message{position:absolute;left:50%;top:22%;transform:translateX(-50%);text-align:center;font-size:12px;letter-spacing:.12em;color:#bfeaff;text-shadow:0 0 12px #00aaff;white-space:nowrap}
+  #start{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#102b43ee,#02060df5);z-index:5;color:white;text-align:center;padding:24px}
+  #start .card{max-width:420px;border:1px solid #64cfff66;border-radius:20px;padding:26px;background:#071321dd;box-shadow:0 0 50px #00aaff22}
+  #start h1{letter-spacing:.18em;font-size:25px;margin:0 0 8px;color:#b8edff}
+  #start p{font-size:13px;line-height:1.6;color:#b8cddd}
+  #start button{width:190px;height:48px;font-size:12px;margin-top:8px}
+  @media(min-width:700px){#stick{left:32px}.buttons{right:32px}.top{left:24px;right:24px}}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="hud">
+  <div class="top">
+    <div class="panel"><div class="brand">STARK FLIGHT TEST</div><div class="stat">ARMOR <span id="armor">100</span>% · ARC <span id="energy">100</span>%</div></div>
+    <div class="panel"><div id="status">SYSTEMS ONLINE</div><div class="stat" id="targets">DRONES: 3</div></div>
+  </div>
+  <div id="help" class="panel">LEFT STICK: steer · BOOST: accelerate<br>UP / DOWN: altitude · HOVER: stabilize<br>FIRE: repulsor bolts · Find and disable the drones.</div>
+  <div id="crosshair"></div><div id="message">FLIGHT SYSTEM READY</div>
+  <div id="controls">
+    <div id="stick"><div id="nub"></div></div>
+    <div class="buttons">
+      <button id="up">ASCEND</button><button id="down">DESCEND</button>
+      <button id="boost">BOOST</button><button id="hover">HOVER</button>
+      <button id="fire">REPULSOR</button><button id="reset">RESET</button>
+    </div>
+  </div>
+</div>
+<div id="start"><div class="card"><h1>STARK FLIGHT TEST</h1><p>A mobile 3D flight-combat prototype.<br>Drag the left stick to steer. Use the buttons to control altitude, boost, hover and fire.</p><button id="launch">INITIALIZE SUIT</button><p style="font-size:10px;color:#7895aa">Prototype build 0.1 · Original fan-made concept</p></div></div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const mount=document.querySelector('#game');
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x071321); scene.fog=new THREE.Fog(0x071321,65,230);
+const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.1,500);
+const renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5)); renderer.setSize(innerWidth,innerHeight); renderer.outputColorSpace=THREE.SRGBColorSpace; mount.appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0x9edcff,0x18202c,1.7));
+const sun=new THREE.DirectionalLight(0xffffff,2.1); sun.position.set(-35,70,25); scene.add(sun);
+const blue=new THREE.PointLight(0x168dff,22,45); blue.position.set(0,14,0); scene.add(blue);
+const mat=(color,metalness=0,roughness=.5,emissive=0x000000)=>new THREE.MeshStandardMaterial({color,metalness,roughness,emissive,emissiveIntensity:.7});
+const gold=mat(0xc58b37,.75,.28), red=mat(0x8d2028,.7,.3), dark=mat(0x172737,.55,.35), glow=new THREE.MeshBasicMaterial({color:0x9cecff});
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(500,500),mat(0x101c2b,.15,.9)); floor.rotation.x=-Math.PI/2; floor.position.y=-1; scene.add(floor);
+const grid=new THREE.GridHelper(500,100,0x28506b,0x1a3043); grid.position.y=-.98; scene.add(grid);
+// city blocks
+for(let i=0;i<95;i++){let x=(Math.random()-.5)*210,z=(Math.random()-.5)*210;if(Math.abs(x)<18&&Math.abs(z)<24)continue;
+ let w=5+Math.random()*9,d=5+Math.random()*9,h=9+Math.random()*48;
+ let b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(new THREE.Color().setHSL(.57+Math.random()*.08,.28,.12+Math.random()*.1),.35,.7));
+ b.position.set(x,h/2-1,z);scene.add(b);
+ for(let y=3;y<h-2;y+=4){for(let xx=-w/2+1;xx<w/2-1;xx+=2.5){let win=new THREE.Mesh(new THREE.BoxGeometry(.7,1.1,.06),new THREE.MeshBasicMaterial({color:Math.random()>.35?0x27506a:0x8a7848}));win.position.set(x+xx,y,z-d/2-.04);scene.add(win)}}
+}
+const rooftop=new THREE.Mesh(new THREE.BoxGeometry(24,1,28),mat(0x263c50,.3,.7));rooftop.position.set(0,-.5,0);scene.add(rooftop);
+// player model, intentionally stylized placeholder
+const player=new THREE.Group(); scene.add(player); player.position.set(0,3,7);
+function part(geo,material,pos,scale){const m=new THREE.Mesh(geo,material);m.position.set(...pos);if(scale)m.scale.set(...scale);player.add(m);return m}
+part(new THREE.SphereGeometry(.55,12,10),gold,[0,1.35,0],[.78,1.05,.55]);
+part(new THREE.SphereGeometry(.42,12,10),red,[0,2.25,0],[.72,.85,.68]);
+part(new THREE.SphereGeometry(.27,12,10),gold,[0,3.05,0],[.8,.9,.8]);
+part(new THREE.BoxGeometry(.48,.09,.08),glow,[0,3.08,-.27]);
+part(new THREE.BoxGeometry(.5,.7,.5),red,[-.72,1.45,0],[.8,1,1]);part(new THREE.BoxGeometry(.5,.7,.5),red,[.72,1.45,0],[.8,1,1]);
+part(new THREE.BoxGeometry(.38,.75,.42),gold,[-.28,.48,0]);part(new THREE.BoxGeometry(.38,.75,.42),gold,[.28,.48,0]);
+const thrusters=[];
+for(const x of [-.72,.72]){let t=new THREE.Mesh(new THREE.ConeGeometry(.17,.85,10),new THREE.MeshBasicMaterial({color:0x55cfff,transparent:true,opacity:.8}));t.rotation.x=Math.PI;t.position.set(x,.35,.05);player.add(t);thrusters.push(t)}
+const reactor=new THREE.Mesh(new THREE.CircleGeometry(.19,16),glow);reactor.position.set(0,1.35,.51);player.add(reactor);
+// drones
+const drones=[];const droneMat=mat(0x273b4d,.8,.25,0x123044);
+for(let i=0;i<3;i++){const g=new THREE.Group();const core=new THREE.Mesh(new THREE.OctahedronGeometry(.8),droneMat);g.add(core);const eye=new THREE.Mesh(new THREE.SphereGeometry(.22,10,8),new THREE.MeshBasicMaterial({color:0xff623f}));eye.position.z=.65;g.add(eye);for(let j=0;j<4;j++){const arm=new THREE.Mesh(new THREE.BoxGeometry(1.2,.12,.12),gold);arm.rotation.y=j*Math.PI/2;g.add(arm)}g.position.set((i-1)*13,8,-24-Math.random()*16);g.userData={alive:true,phase:Math.random()*6};scene.add(g);drones.push(g)}
+let bolts=[],stick={x:0,y:0},keys={up:false,down:false,boost:false,hover:false,fire:false},energy=100,armor=100,lastShot=0,started=false;
+const $=id=>document.getElementById(id);
+function bindHold(id,key){const el=$(id);const on=e=>{e.preventDefault();keys[key]=true;el.classList.add('active')},off=e=>{keys[key]=false;el.classList.remove('active')};el.addEventListener('pointerdown',on);['pointerup','pointercancel','pointerleave'].forEach(n=>el.addEventListener(n,off))}
+bindHold('up','up');bindHold('down','down');bindHold('boost','boost');bindHold('hover','hover');bindHold('fire','fire');
+$('reset').addEventListener('click',()=>{player.position.set(0,3,7);player.rotation.set(0,0,0);energy=100;armor=100;$('message').textContent='FLIGHT SYSTEM RESET'});
+const stickEl=$('stick'),nub=$('nub');let activePointer=null;
+stickEl.addEventListener('pointerdown',e=>{activePointer=e.pointerId;stickEl.setPointerCapture(e.pointerId);moveStick(e)});
+stickEl.addEventListener('pointermove',e=>{if(e.pointerId===activePointer)moveStick(e)});
+function moveStick(e){const r=stickEl.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;let dx=(e.clientX-cx)/47,dy=(e.clientY-cy)/47,l=Math.hypot(dx,dy);if(l>1){dx/=l;dy/=l}stick.x=dx;stick.y=dy;nub.style.transform=`translate(${dx*38}px,${dy*38}px)`}
+function endStick(){activePointer=null;stick.x=stick.y=0;nub.style.transform='translate(0,0)'}
+stickEl.addEventListener('pointerup',endStick);stickEl.addEventListener('pointercancel',endStick);
+const v=new THREE.Vector3(), forward=new THREE.Vector3(), desired=new THREE.Vector3();
+function shoot(){const now=performance.now();if(now-lastShot<260||energy<2)return;lastShot=now;energy=Math.max(0,energy-2);const dir=new THREE.Vector3(0,0,-1).applyQuaternion(player.quaternion);const b=new THREE.Mesh(new THREE.SphereGeometry(.14,8,6),new THREE.MeshBasicMaterial({color:0x8eeaff}));b.position.copy(player.position).add(new THREE.Vector3(0,2.2,0)).addScaledVector(dir,1.5);b.userData={vel:dir.multiplyScalar(1.9),life:100};scene.add(b);bolts.push(b)}
+function update(dt,t){
+ const speed=keys.boost?24:11;const moving=new THREE.Vector3(stick.x,0,-1+Math.abs(stick.y)*.5);moving.x=stick.x;moving.z=-Math.max(.15,1-Math.abs(stick.y)*.55);moving.normalize();
+ const yaw=-stick.x*.85;player.rotation.y+=(yaw-player.rotation.y)*Math.min(1,dt*3);
+ let vertical=(keys.up?1:0)-(keys.down?1:0);
+ if(keys.hover){player.position.y+=(5-player.position.y)*Math.min(1,dt*3);vertical=0}
+ else player.position.y+=vertical*speed*.65*dt;
+ player.position.addScaledVector(moving,speed*dt);
+ player.position.y=THREE.MathUtils.clamp(player.position.y,1.5,55);
+ const tilt=THREE.MathUtils.clamp(-stick.x*.35,-.4,.4);player.rotation.z+=(tilt-player.rotation.z)*Math.min(1,dt*3);
+ thrusters.forEach(q=>{q.visible=vertical!==0||keys.boost||player.position.y>2;q.scale.y=(keys.boost?1.6:1)*(0.8+Math.random()*.35)});
+ if(keys.fire)shoot();if(energy<100)energy=Math.min(100,energy+dt*2.5);
+ drones.forEach((d,i)=>{if(!d.userData.alive)return;d.position.y=8+Math.sin(t*.0015+d.userData.phase)*1.8;d.position.x+=(Math.sin(t*.0005+i)*.4);d.rotation.y+=dt*.7});
+ for(let i=bolts.length-1;i>=0;i--){const b=bolts[i];b.position.addScaledVector(b.userData.vel,dt*60);b.userData.life--;let hit=false;for(const d of drones){if(d.userData.alive&&b.position.distanceTo(d.position)<1.5){d.userData.alive=false;scene.remove(d);hit=true;break}}if(hit||b.userData.life<=0){scene.remove(b);bolts.splice(i,1)}}
+ $('energy').textContent=Math.round(energy);$('armor').textContent=Math.round(armor);$('targets').textContent='DRONES: '+drones.filter(d=>d.userData.alive).length;
+ if(drones.every(d=>!d.userData.alive))$('message').textContent='TEST COMPLETE · ALL DRONES DISABLED';
+}
+function animate(now){requestAnimationFrame(animate);const dt=Math.min(.035,(now-(animate.last||now))/1000);animate.last=now;if(started)update(dt,now);
+ const target=new THREE.Vector3(player.position.x,player.position.y+2.1,player.position.z);
+ const offset=new THREE.Vector3(0,5,12).applyAxisAngle(new THREE.Vector3(0,1,0),player.rotation.y);
+ desired.copy(target).add(offset);camera.position.lerp(desired,.08);camera.lookAt(target);
+ renderer.render(scene,camera)}
+requestAnimationFrame(animate);
+$('launch').addEventListener('click',()=>{$('start').style.display='none';started=true;$('message').textContent='SUIT ONLINE · FLIGHT TEST ACTIVE'});
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.5))});
+</script>
+</body></html>
