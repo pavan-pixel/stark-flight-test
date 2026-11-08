@@ -2,176 +2,683 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 import {FBXLoader} from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/FBXLoader.js';
 import {GLTFLoader} from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 import JSZip from 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm';
-const $=id=>document.getElementById(id),clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-let scene,camera,renderer,clock,iron=null,city=[],cars=[],shots=[],steer={x:0,y:0},flight=false,run=false,boost=false,hover=false,energy=100,shotAt=0;
-let cameraYaw=0,cameraPitch=.16,cameraDistance=12,draggingCamera=false,lastPointer={x:0,y:0};
-function loading(t,p){$('loadtext').textContent=t;$('loadbar').style.width=p+'%'}
-function mat(color,metalness=.2,roughness=.7){return new THREE.MeshStandardMaterial({color,metalness,roughness})}
-function init(){
- scene=new THREE.Scene();scene.background=new THREE.Color(0x8da9c2);scene.fog=new THREE.FogExp2(0x9aafc2,.00038);
- camera=new THREE.PerspectiveCamera(62,innerWidth/innerHeight,.1,3000);
- renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.25));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;document.body.prepend(renderer.domElement);
- clock=new THREE.Clock();scene.add(new THREE.HemisphereLight(0xc8e5ff,0x39404b,2.0));
- const sun=new THREE.DirectionalLight(0xffe0b4,2.4);sun.position.set(-100,180,80);scene.add(sun);
- const sky=new THREE.Mesh(new THREE.SphereGeometry(2200,24,16),new THREE.MeshBasicMaterial({color:0x8da9c2,side:THREE.BackSide}));scene.add(sky);
- try{makeCity();loadSuit();controls();setupCameraSwipe();addEventListener('resize',resize);animate()}catch(err){console.error('STARK INIT FAILED',err);loading('STARTUP ERROR: '+(err.message||err),100)}
+
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+let scene, camera, renderer, clock;
+let iron = null, mixer = null, animActions = {}, currentAnim = '';
+let city = [], cars = [], shots = [];
+let steer = {x: 0, y: 0}, flight = false, run = false, boost = false, hover = false;
+let energy = 100, shotAt = 0;
+let cameraYaw = 0, cameraPitch = 0.22, cameraDistance = 10;
+let draggingCamera = false, lastPointer = {x: 0, y: 0};
+let suitMeshes = [], thrusterLights = [];
+
+function loading(t, p) {
+  const lt = $('loadtext'), lb = $('loadbar');
+  if (lt) lt.textContent = t;
+  if (lb) lb.style.width = p + '%';
 }
-function makeCity(){
- // Main avenue with a wide central carriageway and two sidewalks.
- const asphalt=mat(0x202831,.02,.96),sidewalkMat=mat(0x858b8e,.03,.92),curbMat=mat(0xb2b4b3,.05,.8);
- const road=new THREE.Mesh(new THREE.PlaneGeometry(46,2600),asphalt);road.rotation.x=-Math.PI/2;road.position.set(0,-.09,-1120);scene.add(road);
- for(const side of [-1,1]){
-  const walk=new THREE.Mesh(new THREE.PlaneGeometry(9,2600),sidewalkMat);walk.rotation.x=-Math.PI/2;walk.position.set(side*27.5,-.015,-1120);scene.add(walk);
-  const curb=new THREE.Mesh(new THREE.BoxGeometry(.35,.28,2600),curbMat);curb.position.set(side*23.1,.08,-1120);scene.add(curb);
- }
- const lane=new THREE.MeshBasicMaterial({color:0xd8dfe4,transparent:true,opacity:.42});
- for(const x of [-8,-2.7,2.7,8]){const stripe=new THREE.Mesh(new THREE.PlaneGeometry(.12,2550),lane);stripe.rotation.x=-Math.PI/2;stripe.position.set(x,.008,-1120);scene.add(stripe)}
- // Side streets / intersections every few blocks.
- for(let z=-120;z>-2450;z-=300){
-  const cross=new THREE.Mesh(new THREE.PlaneGeometry(190,15),asphalt);cross.rotation.x=-Math.PI/2;cross.position.set(0,-.075,z);scene.add(cross);
-  for(let x=-20;x<=20;x+=2.5){const bar=new THREE.Mesh(new THREE.PlaneGeometry(1.15,5),new THREE.MeshBasicMaterial({color:0xe8ecee}));bar.rotation.x=-Math.PI/2;bar.position.set(x,.012,z+8);scene.add(bar)}
- }
- const metal=mat(0x596b78,.72,.38),lampGlow=new THREE.MeshBasicMaterial({color:0xffe2b0});
- for(let z=-24;z>-2500;z-=72)for(const side of [-1,1]){
-  const pole=new THREE.Mesh(new THREE.CylinderGeometry(.09,.15,7.4,7),metal);pole.position.set(side*21.7,3.7,z);scene.add(pole);
-  const arm=new THREE.Mesh(new THREE.BoxGeometry(2,.12,.12),metal);arm.position.set(side*20.9,7.15,z);scene.add(arm);
-  const bulb=new THREE.Mesh(new THREE.BoxGeometry(.55,.12,.32),lampGlow);bulb.position.set(side*20,7.05,z);scene.add(bulb);
- }
- // Low-detail traffic is deliberately kept light for mobile GPUs.
- for(let i=0;i<24;i++){
-  const c=new THREE.Group(),paint=mat([0x263a50,0x8c3430,0x9ba6ac,0x303c3d,0xc6b38a][i%5],.48,.34);
-  const body=new THREE.Mesh(new THREE.BoxGeometry(1.85,.68,4.0),paint);body.position.y=.52;c.add(body);
-  const cabin=new THREE.Mesh(new THREE.BoxGeometry(1.48,.52,1.75),mat(0x182b3c,.5,.22));cabin.position.set(0,1.04,-.12);c.add(cabin);
-  for(const x of [-.72,.72])for(const z of [-1.25,1.25]){const w=new THREE.Mesh(new THREE.CylinderGeometry(.25,.25,.14,8),mat(0x111418,.05,.9));w.rotation.z=Math.PI/2;w.position.set(x,.28,z);c.add(w)}
-  c.position.set((i%2?1:-1)*(5+Math.random()*10),0,-Math.random()*2300);scene.add(c);cars.push(c);
- }
- const ground=new THREE.Mesh(new THREE.PlaneGeometry(3400,3400),mat(0x56636b,.02,.99));ground.rotation.x=-Math.PI/2;ground.position.set(0,-.5,-1100);scene.add(ground);
- loadCityModels();
+
+function mat(color, metalness = 0.2, roughness = 0.7) {
+  return new THREE.MeshStandardMaterial({color, metalness, roughness});
 }
-async function loadCityModels(){
- try{
-  loading('DOWNLOADING CITY ASSET PARTS',18);
-  const partNames=['stark-city-part-1.zip','stark-city-part-2.zip','stark-city-part-3.zip','stark-city-part-4.zip'];
-  const archives=await Promise.all(partNames.map(async name=>{
-   const r=await fetch('./'+name+'?v=stark-city-parts-05');if(!r.ok)throw Error(name+' missing');
-   return JSZip.loadAsync(await r.arrayBuffer());
-  }));
-  const files=new Map(),urls=new Map();
-  for(const archive of archives)for(const f of Object.values(archive.files)){
-   if(f.dir||!f.name.startsWith('city/'))continue;
-   const base=f.name.split('/').pop(),bytes=await f.async('uint8array');files.set(f.name,bytes);
-   if(!base.endsWith('.gltf'))urls.set(base,URL.createObjectURL(new Blob([bytes])));
+
+function init() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x8da9c2);
+  scene.fog = new THREE.FogExp2(0x9aafc2, 0.00035);
+
+  camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 3500);
+
+  renderer = new THREE.WebGLRenderer({antialias: devicePixelRatio < 1.5, powerPreference: 'high-performance'});
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  document.body.prepend(renderer.domElement);
+
+  clock = new THREE.Clock();
+
+  const hemi = new THREE.HemisphereLight(0xdbeeff, 0x303842, 2.2);
+  scene.add(hemi);
+
+  const sun = new THREE.DirectionalLight(0xfff1dc, 3.0);
+  sun.position.set(180, 320, 150);
+  scene.add(sun);
+
+  const sky = new THREE.Mesh(
+    new THREE.SphereGeometry(2600, 24, 16),
+    new THREE.MeshBasicMaterial({color: 0x8da9c2, side: THREE.BackSide})
+  );
+  scene.add(sky);
+
+  try {
+    makeCity();
+    loadSuitAndAnimations();
+    controls();
+    setupCameraSwipe();
+    addEventListener('resize', resize);
+    animate();
+  } catch (err) {
+    console.error('STARK INIT FAILED', err);
+    loading('STARTUP ERROR: ' + (err.message || err), 100);
   }
-  const manager=new THREE.LoadingManager();
-  manager.setURLModifier(url=>urls.get(decodeURIComponent(url.split('/').pop().split('?')[0]))||url);
-  const loader=new GLTFLoader(manager);
-  const loadModel=async name=>new Promise((resolve,reject)=>{
-   const bytes=files.get('city/'+name+'.gltf');if(!bytes){reject(Error('Missing '+name));return}
-   loader.parse(new TextDecoder().decode(bytes),'',g=>resolve(g.scene),reject);
+}
+
+function makeCity() {
+  const asphalt = mat(0x1e242b, 0.05, 0.92);
+  const sidewalkMat = mat(0x7d8387, 0.04, 0.88);
+  const curbMat = mat(0xa8abaa, 0.08, 0.75);
+
+  // Broad NYC Central Avenue
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(60, 3200), asphalt);
+  road.rotation.x = -Math.PI / 2;
+  road.position.set(0, -0.09, -1200);
+  scene.add(road);
+
+  for (const side of [-1, 1]) {
+    const walk = new THREE.Mesh(new THREE.PlaneGeometry(12, 3200), sidewalkMat);
+    walk.rotation.x = -Math.PI / 2;
+    walk.position.set(side * 36, -0.015, -1200);
+    scene.add(walk);
+
+    const curb = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 3200), curbMat);
+    curb.position.set(side * 29.8, 0.1, -1200);
+    scene.add(curb);
+  }
+
+  // Cross intersections & Avenue Crosswalks
+  for (let z = 200; z > -2800; z -= 220) {
+    const crossStreet = new THREE.Mesh(new THREE.PlaneGeometry(280, 24), asphalt);
+    crossStreet.rotation.x = -Math.PI / 2;
+    crossStreet.position.set(0, -0.07, z);
+    scene.add(crossStreet);
+
+    for (let x = -26; x <= 26; x += 3.2) {
+      const bar = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 6), new THREE.MeshBasicMaterial({color: 0xedf1f4}));
+      bar.rotation.x = -Math.PI / 2;
+      bar.position.set(x, 0.015, z + 11);
+      scene.add(bar);
+    }
+  }
+
+  // Street furniture & light posts
+  const metal = mat(0x4d5b66, 0.8, 0.3);
+  const lampGlow = new THREE.MeshBasicMaterial({color: 0xffefc6});
+  for (let z = 250; z > -2800; z -= 65) {
+    for (const side of [-1, 1]) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.16, 8.5, 7), metal);
+      pole.position.set(side * 28.5, 4.25, z);
+      scene.add(pole);
+
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.14, 0.14), metal);
+      arm.position.set(side * 27.4, 8.2, z);
+      scene.add(arm);
+
+      const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.15, 0.35), lampGlow);
+      bulb.position.set(side * 26.3, 8.05, z);
+      scene.add(bulb);
+    }
+  }
+
+  // Dynamic NYC Traffic
+  for (let i = 0; i < 30; i++) {
+    const c = new THREE.Group();
+    const colors = [0x223548, 0x852e2a, 0x98a3a8, 0x273133, 0xbfa97d, 0x111317];
+    const paint = mat(colors[i % colors.length], 0.6, 0.3);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.75, 4.4), paint);
+    body.position.y = 0.55;
+    c.add(body);
+
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.58, 2.0), mat(0x142330, 0.6, 0.15));
+    cabin.position.set(0, 1.15, -0.15);
+    c.add(cabin);
+
+    c.position.set((i % 2 ? 1 : -1) * (7 + Math.random() * 16), 0, 150 - Math.random() * 2800);
+    scene.add(c);
+    cars.push(c);
+  }
+
+  const infiniteGround = new THREE.Mesh(new THREE.PlaneGeometry(4500, 4500), mat(0x454f54, 0.02, 0.99));
+  infiniteGround.rotation.x = -Math.PI / 2;
+  infiniteGround.position.set(0, -0.5, -1200);
+  scene.add(infiniteGround);
+
+  loadCityModels();
+}
+
+async function loadCityModels() {
+  try {
+    loading('DOWNLOADING CITY DISTRICTS', 20);
+    const partNames = ['stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip'];
+    const archives = await Promise.all(partNames.map(async name => {
+      const r = await fetch('./' + name + '?v=stark-city-08');
+      if (!r.ok) throw Error(name + ' missing');
+      return JSZip.loadAsync(await r.arrayBuffer());
+    }));
+
+    const files = new Map(), urls = new Map();
+    for (const archive of archives) {
+      for (const f of Object.values(archive.files)) {
+        if (f.dir || !f.name.startsWith('city/')) continue;
+        const base = f.name.split('/').pop();
+        const bytes = await f.async('uint8array');
+        files.set(f.name, bytes);
+        if (!base.endsWith('.gltf')) {
+          urls.set(base, URL.createObjectURL(new Blob([bytes])));
+        }
+      }
+    }
+
+    const manager = new THREE.LoadingManager();
+    manager.setURLModifier(url => urls.get(decodeURIComponent(url.split('/').pop().split('?')[0])) || url);
+    const loader = new GLTFLoader(manager);
+
+    const loadModel = async name => new Promise((resolve, reject) => {
+      const bytes = files.get('city/' + name + '.gltf');
+      if (!bytes) { reject(Error('Missing ' + name)); return; }
+      loader.parse(new TextDecoder().decode(bytes), '', g => resolve(g.scene), reject);
+    });
+
+    loading('BUILDING MANHATTAN CANYON', 40);
+    const [large, medium, small] = await Promise.all([
+      loadModel('Building_Large_2'),
+      loadModel('Building_Medium_2_001'),
+      loadModel('Building_Small_1')
+    ]);
+
+    const templates = [large, medium, small];
+
+    // Primary Avenue Skyscraper Frontage (Surrounding player completely)
+    for (let block = -4; block < 36; block++) {
+      const z = -block * 78;
+      for (const side of [-1, 1]) {
+        const template = templates[Math.abs(block * 3 + (side > 0 ? 1 : 0)) % 3];
+        const model = template.clone(true);
+        const raw = new THREE.Box3().setFromObject(model);
+        const rawSize = raw.getSize(new THREE.Vector3());
+        const targetHeight = Math.abs(block) % 5 === 0 ? 75 : (Math.abs(block) % 3 === 0 ? 56 : 44);
+        model.scale.setScalar(targetHeight / Math.max(1, rawSize.y));
+
+        const box = new THREE.Box3().setFromObject(model);
+        const center = box.getCenter(new THREE.Vector3());
+        const x = side * (46 + (Math.abs(block) % 4) * 4);
+        model.position.set(x - center.x, -box.min.y, z - center.z);
+        model.rotation.y = side < 0 ? 0 : Math.PI;
+        scene.add(model);
+        city.push(model);
+      }
+    }
+
+    // Outer Skyline Blocks
+    for (let i = 0; i < 35; i++) {
+      const template = templates[i % 3];
+      const model = template.clone(true);
+      const raw = new THREE.Box3().setFromObject(model);
+      const size = raw.getSize(new THREE.Vector3());
+      const h = 75 + (i % 7) * 16;
+      model.scale.setScalar(h / Math.max(1, size.y));
+
+      const box = new THREE.Box3().setFromObject(model);
+      const center = box.getCenter(new THREE.Vector3());
+      const side = i % 2 === 0 ? -1 : 1;
+      const depth = 200 - (i % 15) * 180;
+      model.position.set(side * (120 + (i % 5) * 22) - center.x, -box.min.y, depth - center.z);
+      model.rotation.y = side < 0 ? 0 : Math.PI;
+      scene.add(model);
+      city.push(model);
+    }
+
+    for (const u of urls.values()) URL.revokeObjectURL(u);
+    loading('DOWNTOWN SKYLINE READY', 55);
+  } catch (err) {
+    console.error('City asset loading error:', err);
+    loading('FALLBACK SKYLINE ACTIVE', 45);
+  }
+}
+
+async function loadSuitAndAnimations() {
+  loading('INITIALIZING STARK ARMORY', 60);
+  try {
+    const [sourceRes, textRes] = await Promise.all([
+      fetch('./source.zip'),
+      fetch('./textures.zip')
+    ]);
+
+    if (!sourceRes.ok || !textRes.ok) throw Error('source.zip or textures.zip missing');
+
+    const [sourceZip, textZip] = await Promise.all([
+      JSZip.loadAsync(await sourceRes.arrayBuffer()),
+      JSZip.loadAsync(await textRes.arrayBuffer())
+    ]);
+
+    const fbxFile = Object.values(sourceZip.files).find(x => !x.dir && /\.fbx$/i.test(x.name));
+    if (!fbxFile) throw Error('FBX not found in source.zip');
+
+    const modelURL = URL.createObjectURL(await fbxFile.async('blob'));
+    const textureMap = new Map();
+    for (const e of Object.values(textZip.files)) {
+      if (e.dir || !/\.(png|jpe?g|tga)$/i.test(e.name)) continue;
+      textureMap.set(e.name.split('/').pop().split('\\').pop(), URL.createObjectURL(await e.async('blob')));
+    }
+
+    loading('MOUNTING MARK 85 ARMURE', 75);
+    const manager = new THREE.LoadingManager();
+    manager.setURLModifier(url => textureMap.get(decodeURIComponent(url.split('/').pop().split('\\').pop())) || url);
+
+    const fbxLoader = new FBXLoader(manager);
+    fbxLoader.load(modelURL, async obj => {
+      iron = obj;
+      const box = new THREE.Box3().setFromObject(iron);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+
+      iron.position.sub(center);
+      iron.scale.setScalar(3.2 / maxDim);
+      iron.rotation.y = 0;
+
+      iron.traverse(o => {
+        if (o.isMesh) {
+          suitMeshes.push(o);
+          o.frustumCulled = true;
+          if (o.material) {
+            const mats = Array.isArray(o.material) ? o.material : [o.material];
+            mats.forEach(m => {
+              m.metalness = Math.max(m.metalness || 0, 0.88);
+              m.roughness = clamp(m.roughness || 0.35, 0.18, 0.45);
+              m.envMapIntensity = 1.6;
+            });
+          }
+        }
+      });
+
+      // Arc Reactor and Boot Thruster Glow
+      const glowMat = new THREE.MeshBasicMaterial({color: 0x47e8ff});
+      const arc = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 16), glowMat);
+      arc.position.set(0, 1.45, 0.18);
+      iron.add(arc);
+
+      const bootL = new THREE.PointLight(0x00e5ff, 0, 5);
+      bootL.position.set(-0.25, 0.1, 0);
+      iron.add(bootL);
+      thrusterLights.push(bootL);
+
+      const bootR = new THREE.PointLight(0x00e5ff, 0, 5);
+      bootR.position.set(0.25, 0.1, 0);
+      iron.add(bootR);
+      thrusterLights.push(bootR);
+
+      // Spawn in center of Manhattan Avenue
+      iron.position.set(0, 0, -180);
+      scene.add(iron);
+      URL.revokeObjectURL(modelURL);
+
+      // Setup Animation Mixer & Extract KinemIQ motion captures
+      mixer = new THREE.AnimationMixer(iron);
+
+      await tryLoadAnimationClips(fbxLoader);
+
+      loading('MARK 85 ONLINE', 100);
+      setTimeout(() => $('loading').classList.add('hide'), 500);
+    }, undefined, err => {
+      console.warn('Suit FBX fallback triggered:', err);
+      setupFallbackIronMan();
+    });
+  } catch (e) {
+    console.warn('Suit extraction failed, initiating fallback:', e);
+    setupFallbackIronMan();
+  }
+}
+
+async function tryLoadAnimationClips(loader) {
+  try {
+    loading('SYNCING FLIGHT & COMBAT RIG', 88);
+    const animRes = await fetch('./stark-animation-assets.zip');
+    if (!animRes.ok) return;
+
+    const animZip = await JSZip.loadAsync(await animRes.arrayBuffer());
+    const animFiles = Object.values(animZip.files).filter(f => !f.dir && /\.fbx$/i.test(f.name));
+
+    for (const f of animFiles) {
+      const blob = await f.async('blob');
+      const url = URL.createObjectURL(blob);
+      const clipObj = await new Promise(res => loader.load(url, res, undefined, () => res(null)));
+      URL.revokeObjectURL(url);
+
+      if (clipObj && clipObj.animations && clipObj.animations.length > 0) {
+        const rawName = f.name.toLowerCase();
+        let actionKey = 'idle';
+        if (rawName.includes('walk')) actionKey = 'walk';
+        else if (rawName.includes('run')) actionKey = 'run';
+        else if (rawName.includes('fly') || rawName.includes('hover')) actionKey = 'fly';
+
+        const clip = clipObj.animations[0];
+        const action = mixer.clipAction(clip);
+        animActions[actionKey] = action;
+      }
+    }
+
+    if (animActions['idle']) {
+      animActions['idle'].play();
+      currentAnim = 'idle';
+    }
+  } catch (err) {
+    console.warn('Animation pack parse notice:', err);
+  }
+}
+
+function playAnimation(name) {
+  if (!mixer) return;
+  if (currentAnim === name) return;
+
+  const nextAction = animActions[name];
+  const prevAction = animActions[currentAnim];
+
+  if (nextAction) {
+    nextAction.reset();
+    nextAction.fadeIn(0.25);
+    nextAction.play();
+    if (prevAction) prevAction.fadeOut(0.25);
+    currentAnim = name;
+  }
+}
+
+function setupFallbackIronMan() {
+  loading('TACTICAL PROTOCOL ACTIVE', 100);
+  const root = new THREE.Group();
+  const red = mat(0x9d1c1c, 0.85, 0.25);
+  const gold = mat(0xd4a537, 0.9, 0.22);
+  const glow = new THREE.MeshBasicMaterial({color: 0x5feaff});
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.95, 0.4), red);
+  torso.position.y = 1.35;
+  root.add(torso);
+
+  const arc = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.05, 16), glow);
+  arc.rotation.x = Math.PI / 2;
+  arc.position.set(0, 1.45, 0.22);
+  root.add(arc);
+
+  const helm = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.44, 0.4), gold);
+  helm.position.y = 2.0;
+  root.add(helm);
+
+  root.limbs = [];
+  for (const side of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.8, 8), red);
+    arm.position.set(side * 0.55, 1.25, 0);
+    root.add(arm);
+
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.1, 1.0, 8), gold);
+    leg.position.set(side * 0.22, 0.5, 0);
+    root.add(leg);
+
+    root.limbs.push({arm, leg, side});
+  }
+
+  root.position.set(0, 0, -180);
+  iron = root;
+  scene.add(iron);
+  setTimeout(() => $('loading').classList.add('hide'), 600);
+}
+
+function controls() {
+  const joy = $('joy'), stick = $('stick');
+  let active = false, pid = null;
+
+  function move(e) {
+    const r = joy.getBoundingClientRect();
+    const dx = e.clientX - (r.left + r.width / 2);
+    const dy = e.clientY - (r.top + r.height / 2);
+    const max = r.width * 0.38;
+    const len = Math.hypot(dx, dy);
+    const k = Math.min(1, max / (len || 1));
+    steer.x = dx * k / max;
+    steer.y = -dy * k / max; // Upward swipe moves forward
+    stick.style.transform = `translate(${dx * k}px, ${dy * k}px)`;
+  }
+
+  joy.addEventListener('pointerdown', e => {
+    active = true;
+    pid = e.pointerId;
+    joy.setPointerCapture(pid);
+    move(e);
   });
-  loading('BUILDING DOWNTOWN CITY',35);
-  const [large,medium,small,crosswalk]=await Promise.all([
-   loadModel('Building_Large_2'),loadModel('Building_Medium_2_001'),
-   loadModel('Building_Small_1'),loadModel('Decal_Crosswalk')
-  ]);
-  const templates=[large,medium,small];
-  const streetBlocks=[];
-  // Close street frontage: buildings sit beyond sidewalks, not inside the road.
-  for(let block=0;block<32;block++){
-   const z=-45-block*74;
-   for(const side of [-1,1]){
-    const template=templates[(block*3+(side>0?1:0))%3],model=template.clone(true);
-    const raw=new THREE.Box3().setFromObject(model),rawSize=raw.getSize(new THREE.Vector3());
-    const targetHeight=block%5===0?62:(block%3===0?48:38);
-    model.scale.setScalar(targetHeight/Math.max(1,rawSize.y));
-    const box=new THREE.Box3().setFromObject(model),center=box.getCenter(new THREE.Vector3());
-    const x=side*(39+(block%4)*3.5);
-    model.position.set(x-center.x,-box.min.y,z-center.z);
-    model.rotation.y=side<0?0:Math.PI;
-    model.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true}});
-    scene.add(model);city.push(model);streetBlocks.push(model);
-   }
+
+  joy.addEventListener('pointermove', e => {
+    if (active && e.pointerId === pid) move(e);
+  });
+
+  const end = e => {
+    if (e.pointerId !== pid) return;
+    active = false;
+    pid = null;
+    steer = {x: 0, y: 0};
+    stick.style.transform = 'translate(0, 0)';
+  };
+
+  joy.addEventListener('pointerup', end);
+  joy.addEventListener('pointercancel', end);
+
+  $('run').onclick = () => {
+    run = !run;
+    $('run').classList.toggle('on', run);
+    toast(run ? 'SUPERSONIC SPRINT' : 'TACTICAL WALK');
+  };
+
+  $('fly').onclick = () => {
+    if (flight) return;
+    flight = true;
+    boost = false;
+    ['fly', 'run'].forEach(id => $(id).style.display = 'none');
+    ['land', 'hover', 'boost', 'fire'].forEach(id => $(id).style.display = '');
+    toast('REPULSOR THRUSTERS ENGAGED');
+    playAnimation('fly');
+  };
+
+  $('land').onclick = () => {
+    flight = false;
+    boost = false;
+    hover = false;
+    ['land', 'hover', 'boost', 'fire'].forEach(id => $(id).style.display = 'none');
+    ['fly', 'run'].forEach(id => $(id).style.display = '');
+    toast('LANDING COMPLETE — WALK MODE');
+    playAnimation('idle');
+  };
+
+  $('hover').onclick = () => {
+    hover = !hover;
+    $('hover').classList.toggle('on', hover);
+    toast(hover ? 'HOVER STABILIZATION' : 'HOVER DISENGAGED');
+  };
+
+  $('boost').addEventListener('pointerdown', () => boost = true);
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => {
+    $('boost').addEventListener(ev, () => boost = false);
+  });
+
+  $('fire').onclick = fire;
+}
+
+function setupCameraSwipe() {
+  const el = renderer.domElement;
+  el.style.touchAction = 'none';
+
+  el.addEventListener('pointerdown', e => {
+    draggingCamera = true;
+    lastPointer.x = e.clientX;
+    lastPointer.y = e.clientY;
+    el.setPointerCapture(e.pointerId);
+  });
+
+  el.addEventListener('pointermove', e => {
+    if (!draggingCamera) return;
+    const dx = e.clientX - lastPointer.x;
+    const dy = e.clientY - lastPointer.y;
+    lastPointer.x = e.clientX;
+    lastPointer.y = e.clientY;
+    cameraYaw -= dx * 0.006;
+    cameraPitch = clamp(cameraPitch + dy * 0.004, -0.35, 1.15);
+  });
+
+  const stop = () => { draggingCamera = false; };
+  el.addEventListener('pointerup', stop);
+  el.addEventListener('pointercancel', stop);
+}
+
+function toast(t) {
+  $('toast').textContent = t;
+  $('toast').style.opacity = 1;
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => $('toast').style.opacity = 0, 1200);
+}
+
+function fire() {
+  if (!flight || energy < 8 || performance.now() - shotAt < 220) return;
+  shotAt = performance.now();
+  energy -= 8;
+
+  const m = new THREE.Mesh(
+    new THREE.SphereGeometry(0.2, 12, 12),
+    new THREE.MeshBasicMaterial({color: 0x55f2ff})
+  );
+  m.position.copy(iron ? iron.position : new THREE.Vector3());
+  m.position.y += 1.4;
+  scene.add(m);
+
+  // Fire in character facing direction
+  const fireDir = new THREE.Vector3(0, 0, 1).applyQuaternion(iron.quaternion);
+  shots.push({m, v: fireDir.multiplyScalar(140), life: 100});
+  toast('REPULSOR DISCHARGE');
+}
+
+function resize() {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  if (mixer) mixer.update(dt);
+
+  if (iron) {
+    const isMoving = Math.hypot(steer.x, steer.y) > 0.08;
+
+    if (flight) {
+      thrusterLights.forEach(l => l.intensity = THREE.MathUtils.damp(l.intensity, boost ? 4.5 : 2.0, 5, dt));
+
+      const flySpeed = boost ? 90 : (hover ? 12 : 38);
+      const verticalSpeed = boost ? 40 : 25;
+
+      if (!hover) {
+        iron.position.y = THREE.MathUtils.damp(iron.position.y, clamp(iron.position.y + steer.y * verticalSpeed * dt, 2.5, 400), 4, dt);
+      }
+
+      if (isMoving) {
+        // Flight movement relative to camera yaw
+        const moveAngle = Math.atan2(steer.x, steer.y) + cameraYaw;
+        iron.position.x += Math.sin(moveAngle) * flySpeed * dt;
+        iron.position.z -= Math.cos(moveAngle) * flySpeed * dt;
+
+        // Smooth flight orientation & banking roll
+        const targetRotY = moveAngle;
+        const targetBank = -steer.x * 0.45;
+        iron.rotation.y = THREE.MathUtils.damp(iron.rotation.y, targetRotY, 6, dt);
+        iron.rotation.z = THREE.MathUtils.damp(iron.rotation.z, targetBank, 5, dt);
+        iron.rotation.x = THREE.MathUtils.damp(iron.rotation.x, steer.y * 0.25, 4, dt);
+      } else {
+        iron.rotation.z = THREE.MathUtils.damp(iron.rotation.z, 0, 5, dt);
+        iron.rotation.x = THREE.MathUtils.damp(iron.rotation.x, 0, 5, dt);
+      }
+    } else {
+      thrusterLights.forEach(l => l.intensity = THREE.MathUtils.damp(l.intensity, 0, 6, dt));
+
+      const pace = run ? 18.0 : 7.5;
+
+      if (isMoving) {
+        // True Third-Person Character Rotation towards input direction relative to Camera
+        const moveAngle = Math.atan2(steer.x, steer.y) + cameraYaw;
+        const targetQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), moveAngle);
+        iron.quaternion.slerp(targetQuat, Math.min(1, dt * 14));
+
+        // Advance in facing direction
+        iron.position.x += Math.sin(moveAngle) * pace * dt;
+        iron.position.z -= Math.cos(moveAngle) * pace * dt;
+
+        // Play Walk / Run animation state
+        playAnimation(run ? 'run' : 'walk');
+
+        // Procedural limb swing if fallback model is active
+        if (iron.limbs) {
+          const t = clock.elapsedTime * (run ? 14 : 7);
+          iron.limbs.forEach(l => {
+            l.arm.rotation.x = Math.sin(t + (l.side > 0 ? Math.PI : 0)) * 0.6;
+            l.leg.rotation.x = -Math.sin(t + (l.side > 0 ? Math.PI : 0)) * 0.6;
+          });
+        }
+      } else {
+        playAnimation('idle');
+        if (iron.limbs) {
+          iron.limbs.forEach(l => {
+            l.arm.rotation.x = THREE.MathUtils.damp(l.arm.rotation.x, 0, 5, dt);
+            l.leg.rotation.x = THREE.MathUtils.damp(l.leg.rotation.x, 0, 5, dt);
+          });
+        }
+      }
+
+      // Keep feet firmly planted on pavement
+      iron.position.y = THREE.MathUtils.damp(iron.position.y, 0, 10, dt);
+    }
+
+    iron.updateMatrixWorld(true);
   }
-  // Distant skyline: smaller copies create depth without expensive extra geometry.
-  for(let i=0;i<26;i++){
-   const template=templates[i%3],model=template.clone(true);
-   const raw=new THREE.Box3().setFromObject(model),size=raw.getSize(new THREE.Vector3());
-   const h=65+(i%6)*13;model.scale.setScalar(h/Math.max(1,size.y));
-   const box=new THREE.Box3().setFromObject(model),center=box.getCenter(new THREE.Vector3());
-   const side=i%2===0?-1:1,depth=-220-(i%13)*145;
-   model.position.set(side*(105+(i%4)*18)-center.x,-box.min.y,depth-center.z);
-   model.rotation.y=side<0?0:Math.PI;
-   model.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=false}});
-   scene.add(model);city.push(model);
+
+  // Smooth Third-Person Spring-Arm Follow Camera
+  const focus = iron ? iron.position.clone() : new THREE.Vector3(0, 1, 0);
+  focus.y += flight ? 1.4 : 1.8;
+
+  const currentCamDist = flight ? (boost ? 14 : 11) : (run ? 8.5 : 7.2);
+  const orbitOffset = new THREE.Vector3(
+    Math.sin(cameraYaw) * Math.cos(cameraPitch) * currentCamDist,
+    Math.sin(cameraPitch) * currentCamDist + 1.2,
+    Math.cos(cameraYaw) * Math.cos(cameraPitch) * currentCamDist
+  );
+
+  const desiredCamPos = focus.clone().add(orbitOffset);
+  camera.position.lerp(desiredCamPos, Math.min(1, dt * 8));
+  camera.lookAt(focus);
+
+  // Update Moving Traffic
+  for (const c of cars) {
+    c.position.z += dt * 18;
+    if (c.position.z > 350) c.position.z = -2500;
   }
-  for(let z=-110;z>-2450;z-=300){const mark=crosswalk.clone(true);mark.scale.setScalar(4.2);mark.position.set(0,.03,z);scene.add(mark)}
-  for(const u of urls.values())URL.revokeObjectURL(u);
-  loading('DOWNTOWN CITY READY',45);
- }catch(err){console.error('City asset loading failed:',err);loading('CITY ASSET ERROR: '+err.message,30)}
-}
-async function loadSuit(){
- loading('EXTRACTING MARK 85 ASSETS',10);
- try{
-  const [a,b]=await Promise.all([fetch('./source.zip'),fetch('./textures.zip')]);if(!a.ok||!b.ok)throw Error('Keep source.zip and textures.zip beside index.html');
-  const [za,zb]=await Promise.all([JSZip.loadAsync(await a.arrayBuffer()),JSZip.loadAsync(await b.arrayBuffer())]);
-  const f=Object.values(za.files).find(x=>!x.dir&&/\.fbx$/i.test(x.name));if(!f)throw Error('FBX not found inside source.zip');
-  const modelURL=URL.createObjectURL(await f.async('blob')),textureMap=new Map();
-  for(const e of Object.values(zb.files)){if(e.dir||!/\.(png|jpe?g|tga)$/i.test(e.name))continue;textureMap.set(e.name.split('/').pop().split('\\').pop(),URL.createObjectURL(await e.async('blob')))}
-  loading('LOADING MARK 85 MODEL',55);
-  const manager=new THREE.LoadingManager();manager.setURLModifier(url=>textureMap.get(decodeURIComponent(url.split('/').pop().split('\\').pop()))||url);
-  new FBXLoader(manager).load(modelURL,obj=>{
-   iron=obj;const box=new THREE.Box3().setFromObject(iron),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3()),max=Math.max(size.x,size.y,size.z);
-   if(!max)throw Error('Invalid model dimensions');iron.position.sub(center);iron.scale.setScalar(3.5/max);iron.rotation.y=Math.PI;
-   iron.traverse(o=>{if(o.isMesh){o.frustumCulled=true;o.castShadow=false;if(o.material){for(const m of (Array.isArray(o.material)?o.material:[o.material])){m.metalness=Math.max(m.metalness||0,.5);m.roughness=clamp(m.roughness||.4,.2,.72)}}}});
-   scene.add(iron);iron.position.set(0,0,0);URL.revokeObjectURL(modelURL);loading('MARK 85 ONLINE',100);setTimeout(()=>$('loading').classList.add('hide'),600);
-  },xhr=>{if(xhr.total)loading('LOADING MARK 85 MODEL',55+Math.round(xhr.loaded/xhr.total*40))},err=>{console.error(err);fallback();});
- }catch(e){console.error(e);fallback()}
-}
-function fallback(){loading('MODEL ZIP NOT FOUND — TEST SUIT ACTIVE',100);const g=new THREE.Group(),red=mat(0x9d2027,.8,.25),gold=mat(0xc69a4d,.85,.22),glow=new THREE.MeshBasicMaterial({color:0x5feaff});const add=(geo,m,p,s=[1,1,1])=>{const o=new THREE.Mesh(geo,m);o.position.set(...p);o.scale.set(...s);g.add(o)};add(new THREE.CapsuleGeometry(.36,.9,6,10),red,[0,0,0]);add(new THREE.SphereGeometry(.29,16,12),gold,[0,.78,0]);add(new THREE.BoxGeometry(.36,.35,.14),glow,[0,.12,.36]);for(const x of [-1,1]){add(new THREE.CapsuleGeometry(.13,.65,4,8),red,[x*.53,.15,0]);add(new THREE.CapsuleGeometry(.12,.62,4,8),red,[x*.22,-.9,0])}g.scale.setScalar(1.5);iron=g;scene.add(iron);setTimeout(()=>$('loading').classList.add('hide'),700)}
-function controls(){
- const joy=$('joy'),stick=$('stick');let active=false,pid=null;
- function move(e){const r=joy.getBoundingClientRect(),dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),max=r.width*.34,len=Math.hypot(dx,dy),k=Math.min(1,max/(len||1));steer.x=dx*k/max;steer.y=-dy*k/max;stick.style.transform=`translate(${dx*k}px,${dy*k}px)`}
- joy.addEventListener('pointerdown',e=>{active=true;pid=e.pointerId;joy.setPointerCapture(pid);move(e)});joy.addEventListener('pointermove',e=>{if(active&&e.pointerId===pid)move(e)});
- const end=e=>{if(e.pointerId!==pid)return;active=false;pid=null;steer={x:0,y:0};stick.style.transform='translate(0,0)'};
- joy.addEventListener('pointerup',end);joy.addEventListener('pointercancel',end);
- $('run').onclick=()=>{run=!run;$('run').classList.toggle('on',run);toast(run?'RUN MODE':'WALK MODE')};
- $('fly').onclick=()=>{if(flight)return;flight=true;boost=false;['fly','run'].forEach(id=>$(id).style.display='none');['land','hover','boost','fire'].forEach(id=>$(id).style.display='');toast('TAKEOFF — THRUSTERS ENGAGED')};
- $('land').onclick=()=>{flight=false;boost=false;hover=false;['land','hover','boost','fire'].forEach(id=>$(id).style.display='none');['fly','run'].forEach(id=>$(id).style.display='');toast('LANDING COMPLETE — WALK MODE')};
- $('hover').onclick=()=>{hover=!hover;$('hover').classList.toggle('on',hover);toast(hover?'HOVER ENGAGED':'HOVER OFF')};
- $('boost').addEventListener('pointerdown',()=>boost=true);['pointerup','pointercancel','pointerleave'].forEach(ev=>$('boost').addEventListener(ev,()=>boost=false));
- $('fire').onclick=fire;
-}
-function setupCameraSwipe(){
- const el=renderer.domElement;el.style.touchAction='none';
- el.addEventListener('pointerdown',e=>{draggingCamera=true;lastPointer.x=e.clientX;lastPointer.y=e.clientY;el.setPointerCapture(e.pointerId)});
- el.addEventListener('pointermove',e=>{if(!draggingCamera)return;const dx=e.clientX-lastPointer.x,dy=e.clientY-lastPointer.y;lastPointer.x=e.clientX;lastPointer.y=e.clientY;cameraYaw-=dx*.006;cameraPitch=clamp(cameraPitch+dy*.004,-.25,.9)});
- const stop=()=>{draggingCamera=false};el.addEventListener('pointerup',stop);el.addEventListener('pointercancel',stop);
-}
-function toast(t){$('toast').textContent=t;$('toast').style.opacity=1;clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('toast').style.opacity=0,1100)}
-function fire(){if(!flight||energy<5||performance.now()-shotAt<250)return;shotAt=performance.now();energy-=5;const m=new THREE.Mesh(new THREE.SphereGeometry(.12,8,8),new THREE.MeshBasicMaterial({color:0x75eaff}));m.position.copy(iron?iron.position:new THREE.Vector3());scene.add(m);shots.push({m,v:new THREE.Vector3(steer.x*.12,steer.y*.12,-1).normalize().multiplyScalar(5),life:80});toast('REPULSOR FIRED')}
-function resize(){camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)}
-function animate(){
- requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);
- if(iron){
-  if(flight){
-   if(!hover)iron.position.y=THREE.MathUtils.damp(iron.position.y,2.5+steer.y*5,3,dt);else iron.position.y=THREE.MathUtils.damp(iron.position.y,3,2,dt);
-   iron.position.x=THREE.MathUtils.damp(iron.position.x,clamp(iron.position.x+steer.x*12*dt,-30,30),4,dt);
-   iron.rotation.z=THREE.MathUtils.damp(iron.rotation.z,-steer.x*.28,4,dt);iron.rotation.x=THREE.MathUtils.damp(iron.rotation.x,steer.y*.12,3,dt);
-  }else{
-   const pace=run?10:4.5;iron.position.x=clamp(iron.position.x+steer.x*pace*dt,-30,30);iron.position.z-=steer.y*pace*dt;
-   iron.position.y=THREE.MathUtils.damp(iron.position.y,0,6,dt);iron.rotation.y=THREE.MathUtils.damp(iron.rotation.y,steer.x*.22,4,dt);
+
+  // Update Repulsor Projectiles
+  for (let i = shots.length - 1; i >= 0; i--) {
+    const s = shots[i];
+    s.m.position.addScaledVector(s.v, dt);
+    if (--s.life <= 0) {
+      scene.remove(s.m);
+      s.m.geometry.dispose();
+      shots.splice(i, 1);
+    }
   }
-  iron.updateMatrixWorld(true);
- }
- const focus=iron?iron.position:new THREE.Vector3(0,1,0);
- const orbitOffset=new THREE.Vector3(Math.sin(cameraYaw)*cameraDistance,Math.sin(cameraPitch)*cameraDistance+2.1,Math.cos(cameraYaw)*cameraDistance);
- const desired=focus.clone().add(orbitOffset);
- camera.position.lerp(desired,Math.min(1,dt*5));
- const look=focus.clone();look.y+=1.15;camera.lookAt(look);
- for(const c of cars){c.position.z+=dt*12;if(c.position.z>30)c.position.z=-2200}
- for(let i=shots.length-1;i>=0;i--){const s=shots[i];s.m.position.addScaledVector(s.v,dt*60);if(--s.life<=0){scene.remove(s.m);s.m.geometry.dispose();shots.splice(i,1)}}
- energy=clamp(energy+(boost?-dt*12:dt*4),0,100);
- $('mode').textContent=flight?'FLIGHT':'WALK';$('alt').textContent=flight?Math.round(iron?iron.position.y*20:0)+' M':'GROUND';$('spd').textContent=flight?Math.round(boost?520:220):Math.round(Math.hypot(steer.x,steer.y)*(run?18:8));
- renderer.render(scene,camera);
+
+  energy = clamp(energy + (boost ? -dt * 15 : dt * 6), 0, 100);
+
+  $('mode').textContent = flight ? (hover ? 'HOVER' : 'FLIGHT') : (run ? 'SPRINT' : 'WALK');
+  $('alt').textContent = flight ? Math.round(iron ? iron.position.y * 3.2 : 0) + ' M' : 'GROUND';
+  $('spd').textContent = flight ? Math.round(boost ? 640 : (hover ? 20 : 180)) : Math.round(Math.hypot(steer.x, steer.y) * (run ? 24 : 10));
+
+  renderer.render(scene, camera);
 }
+
 init();
