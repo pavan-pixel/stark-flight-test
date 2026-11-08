@@ -66,7 +66,7 @@ class AssetManager {
     let i = 0;
     await Promise.all(names.map(async n => {
       try {
-        const r = await fetch('./' + n + '?v=m13'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
+        const r = await fetch('./' + n + '?v=m14'); if (!r.ok) throw Error('HTTP ' + r.status + ' (keep ' + n + ' in the repo root)');
         const z = await JSZip.loadAsync(await r.arrayBuffer());
         for (const f of Object.values(z.files)) if (!f.dir) this.entries.set(lc(base(f.name)), f);
         this._ok(n);
@@ -132,14 +132,22 @@ class AssetManager {
 // ===== core/SceneManager.js =====
 
 const SUN_DIR = new THREE.Vector3(-0.5, 0.7, 0.45).normalize();
-const FOG_COLOR = 0xb4c6d6;
+function glowTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d');
+  const gr = x.createRadialGradient(128, 128, 0, 128, 128, 128);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.12, 'rgba(255,240,210,0.85)');
+  gr.addColorStop(0.4, 'rgba(255,220,160,0.22)'); gr.addColorStop(1, 'rgba(255,220,160,0)');
+  x.fillStyle = gr; x.fillRect(0, 0, 256, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const FOG_COLOR = 0xcdd9e0;
 
 class SceneManager {
   constructor(perf) {
     this.perf = perf;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(FOG_COLOR);
-    this.scene.fog = new THREE.FogExp2(FOG_COLOR, 0.0014);
+    this.scene.fog = new THREE.FogExp2(FOG_COLOR, 0.0017);
     this.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 3500);
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, perf.tier.pixelRatio));
@@ -163,10 +171,26 @@ class SceneManager {
       side: THREE.BackSide, depthWrite: false, fog: false,
       uniforms: { sunDir: { value: SUN_DIR } },
       vertexShader: 'varying vec3 vD;void main(){vD=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-      fragmentShader: 'varying vec3 vD;uniform vec3 sunDir;void main(){float h=clamp(vD.y,0.,1.);vec3 hor=vec3(.71,.78,.84),top=vec3(.2,.45,.78);vec3 c=mix(hor,top,pow(h,.55));float s=max(dot(normalize(vD),sunDir),0.);c+=vec3(1.,.88,.65)*(pow(s,600.)*3.+pow(s,12.)*.18);gl_FragColor=vec4(c,1.);}',
+      fragmentShader: 'varying vec3 vD;uniform vec3 sunDir;void main(){vec3 d=normalize(vD);float h=clamp(d.y,0.,1.);vec3 hor=vec3(.80,.85,.88),mid=vec3(.46,.62,.84),top=vec3(.16,.38,.72);vec3 c=mix(hor,mid,smoothstep(0.,.25,h));c=mix(c,top,smoothstep(.25,.9,h));float s=max(dot(d,sunDir),0.);c+=vec3(1.,.9,.7)*(pow(s,8.)*.25+pow(s,64.)*.6+pow(s,800.)*4.);gl_FragColor=vec4(c,1.);}',
     }));
     this.sky.renderOrder = -1;
     this.scene.add(this.sky);
+
+    // Soft radial glow used for the sun flare and the boost bloom.
+    this.glowTex = glowTexture();
+    this.sunFlare = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xfff1d0, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, fog: false, transparent: true }));
+    this.sunFlare.scale.set(420, 420, 1); this.sunFlare.renderOrder = 10;
+    this.scene.add(this.sunFlare);
+
+    // Realtime sun shadows on the high tier only (follows the hero, so the 280 m box stays sharp).
+    this.shadows = perf.tier.name === 'high';
+    if (this.shadows) {
+      this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      this.sun.castShadow = true; this.sun.shadow.mapSize.set(2048, 2048);
+      const sc = this.sun.shadow.camera; sc.left = -140; sc.right = 140; sc.top = 140; sc.bottom = -140; sc.near = 10; sc.far = 700; sc.updateProjectionMatrix();
+      this.sun.shadow.bias = -0.0008; this.sun.shadow.normalBias = 0.6;
+      this.scene.add(this.sun.target);
+    }
     addEventListener('resize', () => this.resize());
     perf.onTierChange = t => this.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio));
   }
@@ -174,7 +198,15 @@ class SceneManager {
     this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix();
     this.renderer.setSize(innerWidth, innerHeight);
   }
-  render() { this.sky.position.copy(this.camera.position); this.renderer.render(this.scene, this.camera); }
+  render(hero) {
+    this.sky.position.copy(this.camera.position);
+    this.sunFlare.position.copy(this.camera.position).addScaledVector(SUN_DIR, 2800);
+    if (this.shadows && hero) {
+      this.sun.target.position.set(hero.x, 0, hero.z);
+      this.sun.position.copy(this.sun.target.position).addScaledVector(SUN_DIR, 300);
+    }
+    this.renderer.render(this.scene, this.camera);
+  }
 }
 
 
@@ -282,7 +314,7 @@ class CityManager {
     const size = GRID * PITCH + 2000;
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(size, size),
       new THREE.MeshStandardMaterial({ map: asphalt, color: 0xbdbdbd, roughness: 0.95, metalness: 0, envMapIntensity: 0.2 }));
-    ground.rotation.x = -Math.PI / 2; ground.position.y = -0.01; this.group.add(ground);
+    ground.rotation.x = -Math.PI / 2; ground.position.y = -0.01; ground.receiveShadow = true; this.group.add(ground);
     const padGeo = new THREE.BoxGeometry(BLOCK, PAD_H, BLOCK); padGeo.translate(0, PAD_H / 2, 0);
     const pads = new THREE.InstancedMesh(padGeo, new THREE.MeshStandardMaterial({ map: concrete, color: 0xcfcfcf, roughness: 0.9, envMapIntensity: 0.2 }), GRID * GRID);
     const parkKeys = new Set(this.parks.map(p => p.cx + ',' + p.cz));
@@ -302,7 +334,7 @@ class CityManager {
     const cap = (this.placements.length * 2) || 1;
     this.templates.forEach(t => {
       t.instanced = t.meshes.map(m => {
-        const im = new THREE.InstancedMesh(m.geometry, m.material, cap);
+        const im = new THREE.InstancedMesh(m.geometry, m.material, cap); im.castShadow = true; im.receiveShadow = true;
         im.setColorAt(0, C.setRGB(1, 1, 1)); // create the instance colour buffer up front...
         if (im.instanceColor) im.instanceColor.needsUpdate = true;
         if (m.material) m.material.needsUpdate = true; // ...and make the shader compile with instance colour
@@ -526,7 +558,7 @@ class IronMan {
     const meshes = []; obj.traverse(o => { if (o.isMesh) meshes.push(o); });
     const useNormal = this.perf.tier.normalMaps;
     for (const m of meshes) {
-      m.frustumCulled = false; // skinned bounds are unreliable on imported FBX
+      m.frustumCulled = false; m.castShadow = true; // skinned bounds are unreliable on imported FBX
       const k = key(m.name) || key(Array.isArray(m.material) ? m.material[0].name : m.material.name);
       const orig = Array.isArray(m.material) ? m.material[0] : m.material;
       const set = PARTS[k];
@@ -556,6 +588,8 @@ class IronMan {
       s.visible = false; s.userData.bone = id; this.root.add(s); this.glows.push(s);
     }
     this.chestLight = new THREE.PointLight(0x66e6ff, 0.8, 7); this.root.add(this.chestLight);
+    this.bloom = new THREE.Sprite(new THREE.SpriteMaterial({ map: this._bloomTex(), color: 0x66e6ff, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
+    this.bloom.position.set(0, 1.2, 0.2); this.bloom.scale.set(0.1, 0.1, 1); this.bloom.renderOrder = 9; this.tilt.add(this.bloom);
   }
 
   _buildFallback() {
@@ -592,6 +626,13 @@ class IronMan {
     this.current = next;
   }
 
+  _bloomTex() {
+    const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+    const gr = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, 'rgba(180,240,255,0.6)'); gr.addColorStop(1, 'rgba(120,220,255,0)');
+    x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  }
   // Thruster glow follows the real hand/foot bones; intensity = flight state.
   update(dt, flightAmount, speed = 0, boost = false) {
     this.flying += (flightAmount - this.flying) * Math.min(1, dt * 6);
@@ -607,6 +648,8 @@ class IronMan {
       b.getWorldPosition(p); this.root.worldToLocal(p); s.position.copy(p);
       const foot = s.userData.bone.endsWith('Foot'); s.scale.setScalar((foot ? 0.9 : 0.55) * this.flying * (1 + Math.min(1.2, speed * 0.02) + (boost ? 1.5 : 0)) * (0.9 + Math.random() * 0.2));
     }
+    if (this.bloom) { const target = boost ? 0.9 : 0, s = 3.5 + (boost ? 3 : 0) + Math.sin(performance.now() * 0.02) * 0.4 * (boost ? 1 : 0);
+      this.bloom.material.opacity += (target - this.bloom.material.opacity) * Math.min(1, dt * 8); this.bloom.scale.set(s, s, 1); }
     if (this.chestLight) { this.chestLight.position.set(0, 1.4, -0.25); this.chestLight.intensity = 0.6 + this.flying * 1.2 + (boost ? 4 : 0); }
   }
 
@@ -933,7 +976,7 @@ async function boot() {
     rep.update(dt, inp.boost); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
     cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed });
     hud.readout(move.mode, move.pos.y, move.speed * 3.6, rep.energy);
-    sm.render();
+    sm.render(move.pos);
   })();
 }
 boot().catch(e => { console.error(e); hud.setLoading('STARTUP ERROR: ' + (e.message || e), 100); hud.logError(String(e.stack || e).split('\n')[0]); });
