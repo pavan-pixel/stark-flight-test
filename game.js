@@ -333,23 +333,21 @@ class CityManager {
 
   async load(progress = () => {}) {
     const a = this.assets; a.maxTex = this.perf.tier.texSize; a.dropNormals = !this.perf.tier.normalMaps; const base = '';
-    progress('LOADING BUILDING MODELS', 10);
-    const names = buildingNames(a);
-    if (!names.length) throw new Error('No building_*.gltf models found in any ZIP');
-    // Only request optional suburban assets that actually exist in the mounted archives.
-    // Missing optional files should never delay the core city build.
-    const suburbanNames = Array.from({ length: 8 }, (_, i) => `suburban-building-type-${String.fromCharCode(97 + i)}.glb`).filter(n => a.has(n));
-    const [gb, suburban, treeLarge, treeSmall, decalCross, decalYellow] = await Promise.all([
-      Promise.all(names.map(n => a.loadGLTF(n).catch(() => null))),
-      Promise.all(suburbanNames.map(n => a.loadGLTF(n).catch(() => null))),
+    progress('BUILDING MANHATTAN ARCHITECTURE', 10);
+    // The photogrammetry FBX is deliberately not used for the playable city.
+    // Build a clean, deterministic Manhattan-style grid from instanced geometry.
+    const [treeLarge, treeSmall, decalCross, decalYellow] = await Promise.all([
       a.has('suburban-tree-large.glb') ? a.loadGLTF('suburban-tree-large.glb').catch(() => null) : Promise.resolve(null),
       a.has('suburban-tree-small.glb') ? a.loadGLTF('suburban-tree-small.glb').catch(() => null) : Promise.resolve(null),
       a.loadGLTF(base + 'Decal_Crosswalk.gltf'), a.loadGLTF(base + 'Decal_DoubleYellow_Straight.gltf'),
     ]);
-    progress('PROCESSING CITY GEOMETRY', 55);
-    gb.forEach(g => { if (g) this.templates.push(this._template(g.scene)); });
-    suburban.forEach(g => { if (g) { this.templates.push(this._template(g.scene)); this.suburbanTemplates.push(this.templates.length - 1); } });
-    if (!this.templates.length) throw new Error('All building models failed to load');
+    progress('PROCESSING MANHATTAN DISTRICTS', 55);
+    this.parks = [];
+    const parkRng = rng(85);
+    for (let bi=0; bi<GRID; bi++) for (let bj=0; bj<GRID; bj++) {
+      const cx=(bi-GRID/2+0.5)*PITCH, cz=(bj-GRID/2+0.5)*PITCH;
+      if (parkRng()<0.055 && Math.hypot(cx,cz)>180) this.parks.push({cx,cz});
+    }
     const [asphalt, concrete, detailedAsphalt, asphaltNormal, asphaltRough, detailedConcrete, concreteNormal, concreteRough] = await Promise.all([
       a.loadTexture(base + 'T_Concrete_Asphalt_BaseColor.png', { srgb: true, repeat: 260 }),
       a.loadTexture(base + 'T_Concrete_BaseColor.png', { srgb: true, repeat: 14 }),
@@ -361,15 +359,15 @@ class CityManager {
       a.loadTexture('concrete-roughness.jpg', { repeat: 14 }),
     ]);
     progress('BUILDING STREETS', 70);
-    this._generate();
     this._buildGround(detailedAsphalt || asphalt, detailedConcrete || concrete, asphaltNormal, asphaltRough, concreteNormal, concreteRough);
-    this._buildBuildingInstances();
-    this._buildFarAndSkyline();
+    this._buildManhattanArchitecture();
     this._buildDecals(decalCross.scene, decalYellow.scene);
     this._buildStreetLights();
     if (treeLarge && treeSmall) this._buildNature(treeLarge.scene, treeSmall.scene);
+    this.manhattanMode = true;
+    this.templates = []; this.placements = []; this.nearMeshes = []; this.farMesh = null; this.ringCount = 0;
     this.update(new THREE.Vector3(0, 0, 0), true);
-    progress('CITY READY', 100);
+    progress('MANHATTAN GRID READY', 100);
   }
 
   _template(root) {
@@ -485,6 +483,118 @@ class CityManager {
     });
   }
 
+  _buildManhattanArchitecture() {
+    const makeFacade = (style) => {
+      const canvas=document.createElement('canvas'); canvas.width=512; canvas.height=512;
+      const ctx=canvas.getContext('2d');
+      const palettes=[
+        ['#263d50','#4c7187','#a9c7d7','#132432'],
+        ['#a69a84','#d2c5a9','#e5dcc8','#655b4d'],
+        ['#684b43','#a16f5c','#d2a48c','#352a29'],
+        ['#202b35','#536575','#a9bac5','#111923']
+      ];
+      const p=palettes[style%palettes.length];
+      const grad=ctx.createLinearGradient(0,0,512,512);
+      grad.addColorStop(0,p[0]); grad.addColorStop(.55,p[1]); grad.addColorStop(1,p[0]);
+      ctx.fillStyle=grad; ctx.fillRect(0,0,512,512);
+      const cols=14, rows=22, cellW=512/cols, cellH=512/rows;
+      for(let row=0;row<rows;row++){
+        for(let col=0;col<cols;col++){
+          const x=col*cellW+4, y=row*cellH+4, w=cellW-8, h=cellH-8;
+          ctx.fillStyle=p[3]; ctx.fillRect(x-1,y-1,w+2,h+2);
+          const lit=((row*17+col*29+style*13)%19===0);
+          ctx.fillStyle=lit?'#f5dca0':p[2];
+          ctx.globalAlpha=lit?.92:.72; ctx.fillRect(x,y,w,h); ctx.globalAlpha=1;
+          ctx.fillStyle='rgba(255,255,255,.22)'; ctx.fillRect(x,y,w,2);
+        }
+      }
+      for(let row=0;row<=rows;row++){ctx.fillStyle='rgba(20,25,31,.55)';ctx.fillRect(0,row*cellH,512,3);}
+      const tex=new THREE.CanvasTexture(canvas); tex.colorSpace=THREE.SRGBColorSpace;
+      tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.anisotropy=4; tex.needsUpdate=true;
+      return tex;
+    };
+    const roofMat=new THREE.MeshStandardMaterial({color:0x39434d,roughness:.82,metalness:.18});
+    const stoneMat=new THREE.MeshStandardMaterial({color:0x777e82,roughness:.9,metalness:.05});
+    const facadeMats=[];
+    const facadeTextures=[];
+    for(let s=0;s<4;s++){
+      const tex=makeFacade(s); facadeTextures.push(tex);
+      const side=new THREE.MeshStandardMaterial({map:tex,roughness:s===0||s===3?.34:.72,metalness:s===0||s===3?.42:.08});
+      facadeMats.push([side,side,roofMat,roofMat,side,side]);
+    }
+    const boxGeo=new THREE.BoxGeometry(1,1,1);
+    const mainMeshes=facadeMats.map(mats=>{const im=new THREE.InstancedMesh(boxGeo,mats,GRID*GRID*4);im.count=0;im.castShadow=true;im.receiveShadow=true;im.frustumCulled=false;this.group.add(im);return im;});
+    const upperMeshes=facadeMats.map(mats=>{const im=new THREE.InstancedMesh(boxGeo,mats,GRID*GRID*4);im.count=0;im.castShadow=true;im.receiveShadow=true;im.frustumCulled=false;this.group.add(im);return im;});
+    const podium=new THREE.InstancedMesh(boxGeo,stoneMat,GRID*GRID*4); podium.count=0; podium.frustumCulled=false; this.group.add(podium);
+    const rooftop=new THREE.InstancedMesh(boxGeo,roofMat,GRID*GRID*4); rooftop.count=0; rooftop.frustumCulled=false; this.group.add(rooftop);
+    const counts=[0,0,0,0], upperCounts=[0,0,0,0]; let podiumCount=0, roofCount=0;
+    const rand=rng(20261109);
+    const landmarkBlocks=new Set(['5,5','6,5','5,6']);
+    const addTower=(x,z,w,d,h,style,landmark=false)=>{
+      const idx=style%4, k=counts[idx]++;
+      const baseH=h>105?h*.78:h;
+      M.compose(V.set(x,baseH/2,z),Q.identity(),S.set(w,baseH,d));
+      mainMeshes[idx].setMatrixAt(k,M);
+      mainMeshes[idx].setColorAt(k,new THREE.Color().setHSL(.57+idx*.025,.10,.82+rand()*.14));
+      if(h>105){
+        const uk=upperCounts[idx]++, uh=h-baseH, uw=w*(landmark?.72:.78), ud=d*(landmark?.72:.78);
+        M.compose(V.set(x,baseH+uh/2,z),Q.identity(),S.set(uw,uh,ud));
+        upperMeshes[idx].setMatrixAt(uk,M);
+        upperMeshes[idx].setColorAt(uk,new THREE.Color().setHSL(.57+idx*.025,.10,.82+rand()*.14));
+      }
+      M.compose(V.set(x,4,z),Q.identity(),S.set(w*1.035,8,d*1.035));
+      podium.setMatrixAt(podiumCount,M); podium.setColorAt(podiumCount++,new THREE.Color().setHSL(.10,.08,.56+rand()*.12));
+      if(rand()>.32){
+        M.compose(V.set(x+(rand()-.5)*w*.28,h+2,z+(rand()-.5)*d*.28),Q.identity(),S.set(w*.22,4,d*.2));
+        rooftop.setMatrixAt(roofCount++,M);
+      }
+      this.colliders.push({minX:x-w/2,maxX:x+w/2,minZ:z-d/2,maxZ:z+d/2,h});
+    };
+    this.colliders=[];
+    for(let bi=0;bi<GRID;bi++) for(let bj=0;bj<GRID;bj++){
+      const cx=(bi-GRID/2+.5)*PITCH, cz=(bj-GRID/2+.5)*PITCH;
+      if(landmarkBlocks.has(bi+','+bj)) continue;
+      const district=Math.max(0,1-Math.hypot(cx,cz)/(WORLD_LIMIT*.95));
+      for(const qx of [-1,1]) for(const qz of [-1,1]){
+        const w=34+rand()*3.5,d=34+rand()*3.5;
+        const h=38+district*118+rand()*(district*48+34);
+        const x=cx+qx*23.2,z=cz+qz*23.2,style=rand()<.48?0:rand()<.57?1:rand()<.72?2:3;
+        addTower(x,z,w,d,h,style);
+      }
+    }
+    for(let s=0;s<4;s++){
+      mainMeshes[s].count=counts[s]; mainMeshes[s].instanceMatrix.needsUpdate=true; if(mainMeshes[s].instanceColor)mainMeshes[s].instanceColor.needsUpdate=true;
+      upperMeshes[s].count=upperCounts[s]; upperMeshes[s].instanceMatrix.needsUpdate=true; if(upperMeshes[s].instanceColor)upperMeshes[s].instanceColor.needsUpdate=true;
+    }
+    podium.count=podiumCount; podium.instanceMatrix.needsUpdate=true; if(podium.instanceColor)podium.instanceColor.needsUpdate=true;
+    rooftop.count=roofCount; rooftop.instanceMatrix.needsUpdate=true;
+    // Three skyline anchors with stepped setbacks and spires; positioned on separate blocks.
+    const addLandmark=(x,z,style,kind)=>{
+      const side=facadeMats[style][0], roof=roofMat;
+      const addBox=(w,h,d,y,mat=side)=>{
+        const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;this.group.add(m);
+      };
+      if(kind==='empire'){
+        addBox(54,18,54,9,stoneMat);addBox(43,78,43,57);addBox(34,35,34,113);addBox(22,24,22,142);addBox(7,22,7,165,roof);
+        const spire=new THREE.Mesh(new THREE.CylinderGeometry(1.1,.5,28,8),roof);spire.position.set(x,190,z);this.group.add(spire);
+        this.colliders.push({minX:x-27,maxX:x+27,minZ:z-27,maxZ:z+27,h:178});
+      }else if(kind==='chrysler'){
+        addBox(48,108,48,54);addBox(38,18,38,117);addBox(28,16,28,134);addBox(18,15,18,149);
+        const crown=new THREE.Mesh(new THREE.ConeGeometry(12,25,8),roof);crown.position.set(x,169,z);this.group.add(crown);
+        this.colliders.push({minX:x-24,maxX:x+24,minZ:z-24,maxZ:z+24,h:181});
+      }else{
+        addBox(50,125,50,62.5);const taper=new THREE.Mesh(new THREE.CylinderGeometry(8,24,62,4,1,false),side);taper.position.set(x,156,z);taper.rotation.y=Math.PI/4;this.group.add(taper);
+        const spire=new THREE.Mesh(new THREE.CylinderGeometry(.8,.8,32,8),roof);spire.position.set(x,203,z);this.group.add(spire);
+        this.colliders.push({minX:x-25,maxX:x+25,minZ:z-25,maxZ:z+25,h:187});
+      }
+    };
+    addLandmark(-55,-55,1,'empire');
+    addLandmark(55,-55,0,'chrysler');
+    addLandmark(-55,55,3,'wtc');
+    this.manhattanMode=true;
+    this.placements=[]; this.nearMeshes=[]; this.farMesh=null; this.ringCount=0;
+  }
+
   // Far LOD: one instanced box per distant building + outer skyline ring for depth.
   _buildFarAndSkyline() {
     const r = rng(1985), ringN = 150, cap = ringN + this.placements.length;
@@ -554,8 +664,10 @@ class CityManager {
 
   setRadii(near, far) { this.near = near; this.far = far; this.lastUpdate.set(1e9, 0, 1e9); }
 
-  // Distance-based visibility: full models near the player, box LOD mid-range, nothing beyond.
+  // The Manhattan rebuild is fully instanced and does not need per-frame placement updates.
+  // Retain the legacy LOD path only for older generated-city variants.
   update(pos, force = false) {
+    if (this.manhattanMode) return;
     if (!force && Math.hypot(pos.x - this.lastUpdate.x, pos.z - this.lastUpdate.z) < 10) return;
     this.lastUpdate.copy(pos);
     const counts = this.templates.map(() => 0); let far = this.ringCount;
@@ -769,25 +881,39 @@ class NYCWorld {
     return cache.y;
   }
   resolveCircle(pos,r,y){
-    if(!this.ready || !this.meshBounds?.length) return false;
-    let hit=false;
-    for(const b of this.meshBounds){
-      if(y+1.8 < b.min.y || y > b.max.y+0.5 ||
-         pos.x < b.min.x-r || pos.x > b.max.x+r ||
-         pos.z < b.min.z-r || pos.z > b.max.z+r) continue;
-      const nx=Math.max(b.min.x,Math.min(pos.x,b.max.x));
-      const nz=Math.max(b.min.z,Math.min(pos.z,b.max.z));
-      const dx=pos.x-nx,dz=pos.z-nz,d2=dx*dx+dz*dz;
-      if(d2>=r*r) continue;
-      hit=true;
-      if(d2>1e-6){const d=Math.sqrt(d2);pos.x=nx+dx/d*r;pos.z=nz+dz/d*r;}
-      else{
-        const e=[pos.x-b.min.x,b.max.x-pos.x,pos.z-b.min.z,b.max.z-pos.z],m=Math.min(...e);
-        if(m===e[0])pos.x=b.min.x-r;else if(m===e[1])pos.x=b.max.x+r;
-        else if(m===e[2])pos.z=b.min.z-r;else pos.z=b.max.z+r;
+    if(!this.ready || !this.meshRayBounds?.length) return false;
+    // Do not collide against whole-mesh AABBs: a single FBX mesh can cover an
+    // entire block or street and its rectangular bounds trap the player.
+    // Cast short horizontal rays against actual triangles at torso height.
+    let collided=false;
+    const dirs=[[1,0],[-1,0],[0,1],[0,-1],
+      [0.7071,0.7071],[0.7071,-0.7071],[-0.7071,0.7071],[-0.7071,-0.7071]];
+    const margin=0.12, rayY=y+0.95;
+    for(let pass=0;pass<2;pass++){
+      for(const [dx,dz] of dirs){
+        const origin=new THREE.Vector3(pos.x+dx*(r+margin),rayY,pos.z+dz*(r+margin));
+        const direction=new THREE.Vector3(-dx,0,-dz);
+        this.raycaster.set(origin,direction);
+        this.raycaster.near=0.01; this.raycaster.far=r+margin*2;
+        const ray=this.raycaster.ray;
+        const candidates=this.meshRayBounds.filter(v=>v.box.intersectsRay(ray)).map(v=>v.mesh);
+        if(!candidates.length) continue;
+        const hits=this.raycaster.intersectObjects(candidates,false);
+        const wall=hits.find(h=>{
+          if(!h.face) return true;
+          const n=h.face.normal.clone().transformDirection(h.object.matrixWorld);
+          return Math.abs(n.y)<0.68;
+        });
+        if(!wall) continue;
+        const penetration=Math.min(r,Math.max(0,wall.distance-margin));
+        if(penetration>0.015){
+          pos.x-=dx*penetration;
+          pos.z-=dz*penetration;
+          collided=true;
+        }
       }
     }
-    return hit;
+    return collided;
   }
   raycast(origin,dir,maxDist){
     if(!this.ready || !this.meshes?.length) return maxDist;
@@ -1585,7 +1711,7 @@ async function boot() {
     hero.load((t, p) => hud.setLoading(t, p * 0.45)).catch(e => { heroOk = false; hud.setLoading('MARK 85 ERROR: ' + e.message, 100); }),
     city.load((t, p) => hud.setLoading(t, 45 + p * 0.55)).catch(e => { cityOk = false; hud.logError('CITY: ' + e.message); }),
     traffic.loadModels(assets).catch(e => { hud.logError('TRAFFIC MODELS: ' + e.message); return false; }),
-    nycWorld.load((t,p)=>hud.setLoading(t,72+p*.22)).then(ok=>{nycOk=ok;}).catch(e=>{hud.logError('NYC WORLD: '+e.message);nycOk=false;}),
+    Promise.resolve(false).then(ok=>{nycOk=ok;}),
   ]);
   const environment = await assets.loadEXR('modern_evening_street_1k.exr').catch(() => null);
   if (environment) sm.setEnvironment(environment);
@@ -1619,7 +1745,7 @@ async function boot() {
     if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(v[1]); u.rate = 0.94; u.pitch = 0.88; window.speechSynthesis.speak(u); }
   }));
   document.querySelectorAll('.missionCard[data-mission]').forEach(card=>card.addEventListener('click',()=>{const value=card.dataset.mission;const select=document.getElementById('missionSelect');if(select)select.value=value;document.querySelectorAll('.missionCard').forEach(c=>c.classList.toggle('active',c===card));}));
-  hud.on('start', () => { const selected=document.getElementById('missionSelect')?.value||'city'; missionEnv.setMission(selected); mission.build(selected); if(selected==='city'&&nycOk){nycWorld.activate();move.pos.set(0,nycWorld.surfaceAt(0,0,nycWorld.bounds.max.y),0);}else{nycWorld.group.visible=false;city.group.visible=selected==='city';move.pos.copy(missionEnv.spawn);if(selected==='city')hud.toast('NYC ASSET UNAVAILABLE · PROCEDURAL CITY MODE');} move.vel.set(0,0,0); move.heading=0; move.mode=MODE.WALK; gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); hud.setFlightUI(false); cine.trigger('INTRO', 2.4); });
+  hud.on('start', () => { const selected=document.getElementById('missionSelect')?.value||'city'; missionEnv.setMission(selected); mission.build(selected); if(selected==='city'&&nycOk){nycWorld.activate();move.pos.set(0,nycWorld.surfaceAt(0,0,nycWorld.bounds.max.y),0);}else{nycWorld.group.visible=false;city.group.visible=selected==='city';move.pos.copy(missionEnv.spawn);if(selected==='city')hud.toast('MANHATTAN GRID ONLINE');} move.vel.set(0,0,0); move.heading=0; move.mode=MODE.WALK; gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); hud.setFlightUI(false); cine.trigger('INTRO', 2.4); });
 
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   let cameraMode='THIRD', lockedTarget=null;
