@@ -356,13 +356,10 @@ class CityManager {
     progress('BUILDING MANHATTAN ARCHITECTURE', 10);
     // The photogrammetry FBX is deliberately not used for the playable city.
     // Build a clean, deterministic Manhattan-style grid from instanced geometry.
-    const [treeLarge, treeSmall, decalCross, decalYellow, apartment] = await Promise.all([
+    const [treeLarge, treeSmall, decalCross, decalYellow] = await Promise.all([
       a.has('suburban-tree-large.glb') ? a.loadGLTF('suburban-tree-large.glb').catch(() => null) : Promise.resolve(null),
       a.has('suburban-tree-small.glb') ? a.loadGLTF('suburban-tree-small.glb').catch(() => null) : Promise.resolve(null),
       a.loadGLTF(base + 'Decal_Crosswalk.gltf'), a.loadGLTF(base + 'Decal_DoubleYellow_Straight.gltf'),
-      a.has('modular_urban_apartments_facade_1k.gltf')
-        ? a.loadGLTF('modular_urban_apartments_facade_1k.gltf').catch(() => null)
-        : Promise.resolve(null),
     ]);
     progress('PROCESSING MANHATTAN DISTRICTS', 55);
     this.parks = [];
@@ -393,16 +390,57 @@ class CityManager {
       if (a.has(file)) pbr[key] = await a.loadTexture(file, { srgb:key.endsWith('Color'), anisotropy:this.perf.isMobile?4:8 });
     }));
     this.pbr = pbr;
-    progress('BUILDING STREETS', 70);
+    progress('LOADING REAL BUILDING ASSETS', 68);
+    this.parks = [];
+    await this._loadBuildingTemplates();
+    if (!this.templates.length) throw new Error('No commercial building GLB assets were found in the mounted city archives');
+    this._generate();
+    this._buildBuildingInstances();
+    this._buildFarAndSkyline();
+    progress('BUILDING CITY STREETS', 76);
     this._buildGround(detailedAsphalt || asphalt, pbr.concreteColorPBR || detailedConcrete || concrete, asphaltNormal, asphaltRough, pbr.concreteNormalPBR || concreteNormal, pbr.concreteRoughPBR || concreteRough);
-    this._buildManhattanArchitecture(pbr, apartment?.scene || null);
     this._buildDecals(decalCross.scene, decalYellow.scene);
     this._buildStreetLights();
     if (treeLarge && treeSmall) this._buildNature(treeLarge.scene, treeSmall.scene);
-    this.manhattanMode = true;
-    this.templates = []; this.placements = []; this.nearMeshes = []; this.farMesh = null; this.ringCount = 0;
+    this.manhattanMode = false;
+    this.nearMeshes = []; this.lastUpdate.set(1e9, 0, 1e9);
     this.update(new THREE.Vector3(0, 0, 0), true);
-    progress('MANHATTAN GRID READY', 100);
+    progress('ASSET-DRIVEN MANHATTAN READY · '+this.templates.length+' BUILDING TYPES', 100);
+  }
+
+  // Load authored low-poly commercial buildings and skyscrapers from the mounted Kenney city packs.
+  // Geometry is baked once, then instanced across the full grid. Nearby buildings keep their
+  // authored windows/roof silhouettes; distant buildings use the lightweight skyline LOD.
+  async _loadBuildingTemplates() {
+    const names = [
+      ...'abcdefghijklmn'.split('').map(k => 'kenney-commercial-building-' + k + '.glb'),
+      ...'abcde'.split('').map(k => 'kenney-commercial-building-skyscraper-' + k + '.glb')
+    ];
+    this.templates = [];
+    for (const name of names) {
+      if (!this.assets.has(name)) continue;
+      try {
+        const gltf = await this.assets.loadGLTF(name);
+        const template = this._template(gltf.scene);
+        if (!(template.w > 0.1 && template.d > 0.1 && template.h > 0.1)) continue;
+        template.name = name;
+        for (const mesh of template.meshes) {
+          mesh.geometry.computeBoundingSphere();
+          for (const material of (Array.isArray(mesh.material) ? mesh.material : [mesh.material])) {
+            if (!material) continue;
+            material.envMapIntensity = this.perf.isMobile ? 0.25 : 0.45;
+            if (material.isMeshStandardMaterial) {
+              material.roughness = Math.max(0.42, material.roughness || 0.7);
+              material.needsUpdate = true;
+            }
+          }
+        }
+        this.templates.push(template);
+      } catch (error) {
+        console.warn('[STARK CITY] Building asset skipped:', name, error);
+      }
+    }
+    if (this.templates.length < 4) throw new Error('City architecture needs at least 4 valid Kenney building GLBs; loaded ' + this.templates.length);
   }
 
   _template(root) {
