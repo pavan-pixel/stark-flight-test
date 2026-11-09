@@ -1831,19 +1831,98 @@ async function boot() {
   // NPC animation clips are mounted for subsequent retargeting; they are not played until
   // skeleton compatibility is verified, avoiding broken rigs on mobile.
   class CommunityAssetLayer {
-    constructor(scene,assets,perf){this.scene=scene;this.assets=assets;this.perf=perf;this.group=new THREE.Group();scene.add(this.group);this.loaded=[];this.textures={};this.pedestrians=[];}
+    constructor(scene,assets,perf){
+      this.scene=scene;this.assets=assets;this.perf=perf;this.group=new THREE.Group();scene.add(this.group);
+      this.loaded=[];this.textures={};this.pedestrians=[];this.clock=0;
+    }
     report(n,e){hud.logError('COMMUNITY '+n+': '+(e&&e.message||e));}
-    place(root,x,z,h=1.8,rot=0){const box=new THREE.Box3().setFromObject(root),size=box.getSize(new THREE.Vector3()),k=h/Math.max(size.y,.01);root.scale.setScalar(k);root.position.set(x-(box.min.x+box.max.x)*.5*k,-box.min.y*k,z-(box.min.z+box.max.z)*.5*k);root.rotation.y=rot;root.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true;}});this.group.add(root);return root;}
-    fallback(x,z,i){const g=new THREE.Group(),coat=new THREE.MeshStandardMaterial({color:i%2?0x263e54:0x743638,roughness:.75}),skin=new THREE.MeshStandardMaterial({color:0xb98c70,roughness:.9});const add=(geo,mat,p)=>{const m=new THREE.Mesh(geo,mat);m.position.set(...p);g.add(m);};add(new THREE.CapsuleGeometry(.22,.62,4,7),coat,[0,.98,0]);add(new THREE.SphereGeometry(.17,10,8),skin,[0,1.55,0]);for(const d of [-1,1]){add(new THREE.CapsuleGeometry(.08,.42,3,6),coat,[d*.28,1.02,0]);add(new THREE.CapsuleGeometry(.09,.52,3,6),coat,[d*.12,.35,0]);}g.position.set(x,0,z);this.group.add(g);this.pedestrians.push(g);return g;}
+    place(root,x,z,h=1.8,rot=0){
+      const box=new THREE.Box3().setFromObject(root),size=box.getSize(new THREE.Vector3()),k=h/Math.max(size.y,.01);
+      root.scale.setScalar(k);root.position.set(x-(box.min.x+box.max.x)*.5*k,-box.min.y*k,z-(box.min.z+box.max.z)*.5*k);root.rotation.y=rot;
+      root.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true;}});
+      this.group.add(root);return root;
+    }
+    rigData(root){
+      const bones={leftArm:null,rightArm:null,leftForearm:null,rightForearm:null,leftLeg:null,rightLeg:null,leftShin:null,rightShin:null,spine:null};
+      root.traverse(o=>{
+        if(!o.isBone)return;
+        const n=o.name.toLowerCase().replace(/[^a-z]/g,'');
+        if(/leftarm$/.test(n))bones.leftArm=o;
+        else if(/rightarm$/.test(n))bones.rightArm=o;
+        else if(/leftforearm$/.test(n))bones.leftForearm=o;
+        else if(/rightforearm$/.test(n))bones.rightForearm=o;
+        else if(/leftupleg$|leftthigh$/.test(n))bones.leftLeg=o;
+        else if(/rightupleg$|rightthigh$/.test(n))bones.rightLeg=o;
+        else if(/leftleg$/.test(n))bones.leftShin=o;
+        else if(/rightleg$/.test(n))bones.rightShin=o;
+        else if(/spine$|spine1$/.test(n))bones.spine=o;
+      });
+      const joints=Object.entries(bones).filter(([,v])=>v).map(([key,bone])=>({key,bone,base:bone.rotation.clone()}));
+      return joints.length>=4?joints:null;
+    }
+    fallback(x,z,i){
+      const root=new THREE.Group(),coat=new THREE.MeshStandardMaterial({color:i%2?0x263e54:0x743638,roughness:.78}),skin=new THREE.MeshStandardMaterial({color:0xb98c70,roughness:.9}),pants=new THREE.MeshStandardMaterial({color:0x202a34,roughness:.86});
+      const add=(parent,geo,mat,pos)=>{const m=new THREE.Mesh(geo,mat);m.position.set(...pos);m.castShadow=false;parent.add(m);return m;};
+      add(root,new THREE.CapsuleGeometry(.21,.48,4,8),coat,[0,1.12,0]);add(root,new THREE.SphereGeometry(.15,10,8),skin,[0,1.62,0]);
+      const limbs=[];
+      for(const side of [-1,1]){
+        const arm=new THREE.Group();arm.position.set(side*.24,1.36,0);add(arm,new THREE.CapsuleGeometry(.065,.42,3,6),coat,[0,-.23,0]);root.add(arm);
+        const leg=new THREE.Group();leg.position.set(side*.12,.82,0);add(leg,new THREE.CapsuleGeometry(.085,.48,3,6),pants,[0,-.25,0]);root.add(leg);
+        limbs.push({arm,leg,side});
+      }
+      root.position.set(x,0,z);this.group.add(root);
+      const npc={root,joints:null,limbs,phase:i*1.7,speed:.8+(i%3)*.13,originX:x,originZ:z,radius:1.8,heading:i%2?Math.PI:0};
+      this.pedestrians.push(npc);return npc;
+    }
     async prop(n,x,z,h,r=0){try{const g=await this.assets.loadGLTF(n);this.place(g.scene,x,z,h,r);this.loaded.push(n);}catch(e){this.report(n,e);}}
-    async pedestrian(n,x,z,i){try{const g=await this.assets.loadGLTF(n);const root=this.place(g.scene,x,z,1.8,i%2?Math.PI:0);this.loaded.push(n);this.pedestrians.push(root);}catch(e){this.report(n,e);this.fallback(x,z,i);}}
-    async load(){await Promise.all([
-      this.prop('kenney-roads-dumpster.glb',-13,-42,2.1),this.prop('kenney-roads-electricity-pole.glb',13,-42,8),this.prop('kenney-roads-traffic-light.glb',-13,42,5.5,Math.PI),this.prop('kenney-roads-construction-barrier.glb',13,42,1.2,Math.PI/2),
-      this.pedestrian('npc-male-Superhero_Male_FullBody.gltf',-9,-20,0),this.pedestrian('npc-female-Superhero_Female_FullBody.gltf',9,-20,1),this.pedestrian('npc-male-Superhero_Male_FullBody.gltf',-12,22,2),this.pedestrian('npc-female-Superhero_Female_FullBody.gltf',12,22,3)
-    ]);
-    for(const [k,n] of Object.entries({flame:'vfx-particle-flame_01.png',muzzle:'vfx-particle-muzzle_01.png',spark:'vfx-particle-spark_01.png',smoke:'vfx-smoke-explosion00.png'})){const t=await this.assets.loadTexture(n,{srgb:true,anisotropy:2});if(t)this.textures[k]=t;}
-    return this.loaded.length;}
-    apply(hero,rep){const t=this.textures.flame;if(t)for(const j of hero.thrusters||[]){j.glow.material.map=t;j.glow.material.needsUpdate=true;j.flare.material.map=t;j.flare.material.needsUpdate=true;}if(rep&&this.textures.muzzle)rep.setTexture(this.textures.muzzle);}
+    async pedestrian(n,x,z,i){
+      try{
+        const g=await this.assets.loadGLTF(n),root=this.place(g.scene,x,z,1.8,i%2?Math.PI:0),joints=this.rigData(root);
+        if(!joints){this.group.remove(root);this.fallback(x,z,i);return;}
+        const npc={root,joints,limbs:null,phase:i*1.7,speed:.8+(i%3)*.13,originX:x,originZ:z,radius:2.2,heading:i%2?Math.PI:0};
+        this.pedestrians.push(npc);this.loaded.push(n);
+      }catch(e){this.report(n,e);this.fallback(x,z,i);}
+    }
+    async load(){
+      await Promise.all([
+        this.prop('kenney-roads-dumpster.glb',-13,-42,2.1),this.prop('kenney-roads-electricity-pole.glb',13,-42,8),
+        this.prop('kenney-roads-traffic-light.glb',-13,42,5.5,Math.PI),this.prop('kenney-roads-construction-barrier.glb',13,42,1.2,Math.PI/2),
+        this.pedestrian('npc-male-Superhero_Male_FullBody.gltf',-9,-20,0),this.pedestrian('npc-female-Superhero_Female_FullBody.gltf',9,-20,1),
+        this.pedestrian('npc-male-Superhero_Male_FullBody.gltf',-12,22,2),this.pedestrian('npc-female-Superhero_Female_FullBody.gltf',12,22,3)
+      ]);
+      for(const [k,n] of Object.entries({flame:'vfx-particle-flame_01.png',muzzle:'vfx-particle-muzzle_01.png',spark:'vfx-particle-spark_01.png',smoke:'vfx-smoke-explosion00.png'})){
+        const t=await this.assets.loadTexture(n,{srgb:true,anisotropy:2});if(t)this.textures[k]=t;
+      }
+      return this.loaded.length;
+    }
+    update(dt){
+      this.clock+=dt;
+      for(const n of this.pedestrians){
+        const phase=this.clock*n.speed+n.phase,walk=Math.sin(phase),counter=Math.cos(phase);
+        // Move along a short sidewalk loop; this is a lightweight crowd pass, not pathfinding.
+        n.root.position.x=n.originX+Math.sin(phase*.22)*n.radius;
+        n.root.position.z=n.originZ+Math.cos(phase*.22)*n.radius;
+        n.root.rotation.y=n.heading+Math.sin(phase*.22)*.22;
+        if(n.joints)for(const j of n.joints){
+          const k=j.key;
+          j.bone.rotation.copy(j.base);
+          if(k==='leftArm')j.bone.rotation.x+=walk*.42;
+          else if(k==='rightArm')j.bone.rotation.x-=walk*.42;
+          else if(k==='leftForearm')j.bone.rotation.x-=.12;
+          else if(k==='rightForearm')j.bone.rotation.x-=.12;
+          else if(k==='leftLeg')j.bone.rotation.x+=walk*.58;
+          else if(k==='rightLeg')j.bone.rotation.x-=walk*.58;
+          else if(k==='leftShin')j.bone.rotation.x+=Math.max(0,-walk)*.48;
+          else if(k==='rightShin')j.bone.rotation.x+=Math.max(0,walk)*.48;
+          else if(k==='spine')j.bone.rotation.z+=counter*.025;
+        }
+        if(n.limbs)for(const l of n.limbs){l.arm.rotation.x=(l.side===-1?1:-1)*walk*.48;l.leg.rotation.x=(l.side===-1?-1:1)*walk*.62;}
+      }
+    }
+    apply(hero,rep){
+      const t=this.textures.flame;if(t)for(const j of hero.thrusters||[]){j.glow.material.map=t;j.glow.material.needsUpdate=true;j.flare.material.map=t;j.flare.material.needsUpdate=true;}
+      if(rep&&this.textures.muzzle)rep.setTexture(this.textures.muzzle);
+    }
   }
 
   // Hero first (playable immediately), city second; either failure is reported and never blocks the loop.
@@ -1911,7 +1990,7 @@ async function boot() {
     const dt = Math.min(clock.getDelta(), 0.05);
     perf.frame(dt);
     if (gamePaused) { sm.render(move.pos, {}); return; }
-    if (!gameStarted) { hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading; hero.update(dt, 0, 0, false, MODE.WALK, 0, false); city.update(move.pos); if(missionEnv.active==='city')traffic.update(dt, move.pos); cine.update(dt, move); sm.render(move.pos, {}); return; }
+    if (!gameStarted) { hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading; hero.update(dt, 0, 0, false, MODE.WALK, 0, false); city.update(move.pos); community.update(dt); if(missionEnv.active==='city')traffic.update(dt, move.pos); cine.update(dt, move); sm.render(move.pos, {}); return; }
     const inp = { x: hud.steer.x, y: hud.steer.y, run: hud.input.run, boost: hud.input.boost && move.mode === MODE.FLY && rep.energy > 1, hover: hud.input.hover, up: hud.input.up, down: hud.input.down };
     move.update(dt, inp, cam.yaw, city);
     if (move.landed) { move.landed = false; hud.setFlightUI(false); hud.toast('LANDED — WALK MODE'); cam.bump(0.06); }
@@ -1923,6 +2002,7 @@ async function boot() {
     hero.tilt.rotation.set(move.pitch, 0, move.bank);
     hero.update(dt, move.flying ? 1 : 0, move.speed, inp.boost, move.mode, move.vel.y, inp.hover, move.vel);
     city.update(move.pos);
+    community.update(dt);
     if(missionEnv.active==='city')traffic.update(dt, move.pos);
     rep.update(dt, inp.boost, mission, hud);
      if(hud.input.fire&&gameStarted&&!gamePaused&&hud.handlers.fire)hud.handlers.fire();
