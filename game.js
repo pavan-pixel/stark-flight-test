@@ -1279,24 +1279,18 @@ class ThirdPersonCamera {
     this._tmp = new THREE.Vector3(); this._dir = new THREE.Vector3(); this.pos = new THREE.Vector3(0, 4, 12);
   }
   attach(el) {
-    // Window-level tracking is more reliable for captured touch gestures in iOS Safari.
     el.style.touchAction='none';
-    const blocked=target=>!!(target&&target.closest&&target.closest('#joy,.controls,button,input,select,#minimapWrap,#gameTopActions,.pauseShade'));
-    el.addEventListener('pointerdown',e=>{
-      if(blocked(e.target)||(e.pointerType==='mouse'&&e.button!==0))return;
-      e.preventDefault();this.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
-      try{el.setPointerCapture(e.pointerId);}catch(_){}
-      if(this.pointers.size===2)this.pinch=this._span();
-    },{passive:false});
-    window.addEventListener('pointermove',e=>{
-      const p=this.pointers.get(e.pointerId);if(!p)return;e.preventDefault();
-      const dx=e.clientX-p.x,dy=e.clientY-p.y;p.x=e.clientX;p.y=e.clientY;
-      if(this.pointers.size>=2){const s=this._span();if(this.pinch>0)this.userDist=clamp(this.userDist*(this.pinch/Math.max(s,1)),.6,2.2);this.pinch=s;}
-      else{this.yaw-=dx*.0042;this.pitch=clamp(this.pitch+dy*.003,-.38,.78);}
-    },{passive:false});
-    const up=e=>{this.pointers.delete(e.pointerId);if(this.pointers.size<2)this.pinch=0;};
-    window.addEventListener('pointerup',up,{passive:true});window.addEventListener('pointercancel',up,{passive:true});
-    el.addEventListener('lostpointercapture',up);
+    const blocked=t=>!!(t&&t.closest&&t.closest('#joy,.controls,button,input,select,#minimapWrap,#gameTopActions,.pauseShade'));
+    const begin=(id,x,y,target)=>{if(blocked(target))return;this.pointers.set(id,{x,y});if(this.pointers.size===2)this.pinch=this._span();};
+    const move=(id,x,y,e)=>{const p=this.pointers.get(id);if(!p)return;if(e)e.preventDefault();const dx=x-p.x,dy=y-p.y;p.x=x;p.y=y;if(this.pointers.size>=2){const z=this._span();if(this.pinch>0)this.userDist=clamp(this.userDist*this.pinch/Math.max(z,1),.6,2.2);this.pinch=z;}else{this.yaw-=dx*.006;this.pitch=clamp(this.pitch+dy*.004,-.5,.9);}};
+    const end=id=>{this.pointers.delete(id);if(this.pointers.size<2)this.pinch=0;};
+    el.addEventListener('pointerdown',e=>{if(e.pointerType==='touch'||(e.pointerType==='mouse'&&e.button!==0))return;e.preventDefault();begin('p'+e.pointerId,e.clientX,e.clientY,e.target);try{el.setPointerCapture(e.pointerId);}catch(_){}},{passive:false});
+    window.addEventListener('pointermove',e=>{if(e.pointerType!=='touch')move('p'+e.pointerId,e.clientX,e.clientY,e);},{passive:false});
+    window.addEventListener('pointerup',e=>end('p'+e.pointerId),{passive:true});window.addEventListener('pointercancel',e=>end('p'+e.pointerId),{passive:true});
+    el.addEventListener('touchstart',e=>{for(const t of e.changedTouches)begin('t'+t.identifier,t.clientX,t.clientY,e.target);if(this.pointers.size)e.preventDefault();},{passive:false});
+    el.addEventListener('touchmove',e=>{for(const t of e.changedTouches)move('t'+t.identifier,t.clientX,t.clientY,e);},{passive:false});
+    const te=e=>{for(const t of e.changedTouches)end('t'+t.identifier);};el.addEventListener('touchend',te,{passive:true});el.addEventListener('touchcancel',te,{passive:true});
+    el.addEventListener('lostpointercapture',e=>end('p'+e.pointerId));
     el.addEventListener('wheel',e=>{this.userDist=clamp(this.userDist*(1+e.deltaY*.001),.6,2.2);},{passive:true});
   }
   _span() { const a = [...this.pointers.values()]; return a.length < 2 ? 1 : Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); }
@@ -1327,32 +1321,11 @@ class ThirdPersonCamera {
 
 // Milestone-1 port of the original FIRE button (pooled: no geometry/material created per shot).
 class RepulsorSystem {
-  constructor(scene) {
-    this.scene = scene; this.energy = 100; this.last = 0; this.shots = [];
-    this.geo = new THREE.SphereGeometry(0.16, 12, 10); this.mat = new THREE.MeshBasicMaterial({ color: 0xd9fbff, fog: false }); this.axis = new THREE.Vector3(0,0,1);
-    this.pool = [];
-  }
-  fire(origins, dir) {
-    const now = performance.now();
-    if (this.energy < 6 || now - this.last < 220) return false;
-    this.last = now; this.energy -= 6;
-    for (const o of origins) {
-      const m = this.pool.pop() || new THREE.Mesh(this.geo, this.mat); m.position.copy(o); m.scale.set(0.85,0.85,4.2); m.quaternion.setFromUnitVectors(this.axis,dir); this.scene.add(m);
-      this.shots.push({ m, v: dir.clone().multiplyScalar(150), life: 1.8 });
-    }
-    return true;
-  }
-  update(dt, regenBlocked, mission = null, hud = null) {
-    if (!regenBlocked) this.energy = Math.min(100, this.energy + dt * 6);
-    for (let i = this.shots.length - 1; i >= 0; i--) {
-      const s = this.shots[i], previous = s.m.position.clone();
-      s.m.position.addScaledVector(s.v, dt);
-      if (mission && (mission.hitSegment ? mission.hitSegment(previous, s.m.position, hud) : mission.hit(s.m.position, hud))) s.life = 0;
-      if ((s.life -= dt) <= 0) { this.scene.remove(s.m); this.pool.push(s.m); this.shots.splice(i, 1); }
-    }
-  }
+  constructor(scene){this.scene=scene;this.energy=100;this.last=0;this.shots=[];this.geo=new THREE.SphereGeometry(.16,12,10);this.mat=new THREE.MeshBasicMaterial({color:0xd9fbff,fog:false});this.axis=new THREE.Vector3(0,0,1);this.pool=[];this.spriteTexture=null;}
+  setTexture(t){this.spriteTexture=t;}
+  fire(origins,dir){const now=performance.now();if(this.energy<6||now-this.last<220)return false;this.last=now;this.energy-=6;for(const o of origins){const m=this.pool.pop()||new THREE.Mesh(this.geo,this.mat);m.position.copy(o);m.scale.set(.85,.85,4.2);m.quaternion.setFromUnitVectors(this.axis,dir);this.scene.add(m);let flash=null;if(this.spriteTexture){flash=new THREE.Sprite(new THREE.SpriteMaterial({map:this.spriteTexture,color:0xc9f8ff,transparent:true,opacity:.95,blending:THREE.AdditiveBlending,depthWrite:false}));flash.position.copy(o);flash.scale.set(1.2,1.2,1);this.scene.add(flash);}this.shots.push({m,flash,v:dir.clone().multiplyScalar(150),life:1.8});}return true;}
+  update(dt,regenBlocked,mission=null,hud=null){if(!regenBlocked)this.energy=Math.min(100,this.energy+dt*6);for(let i=this.shots.length-1;i>=0;i--){const q=this.shots[i],prev=q.m.position.clone();q.m.position.addScaledVector(q.v,dt);if(q.flash){q.flash.position.copy(q.m.position);q.flash.material.opacity=Math.max(0,Math.min(1,q.life*2));}if(mission&&(mission.hitSegment?mission.hitSegment(prev,q.m.position,hud):mission.hit(q.m.position,hud)))q.life=0;if((q.life-=dt)<=0){this.scene.remove(q.m);this.pool.push(q.m);if(q.flash){this.scene.remove(q.flash);q.flash.material.dispose();}this.shots.splice(i,1);}}}
 }
-
 
 // ===== ui/HUD.js =====
 const $ = id => document.getElementById(id);
@@ -1856,50 +1829,19 @@ async function boot() {
   // NPC animation clips are mounted for subsequent retargeting; they are not played until
   // skeleton compatibility is verified, avoiding broken rigs on mobile.
   class CommunityAssetLayer {
-    constructor(scene, assets, perf) { this.scene=scene; this.assets=assets; this.perf=perf; this.group=new THREE.Group(); this.scene.add(this.group); this.loaded=[]; }
-    async addProp(name, x, z, targetHeight=4, rot=0) {
-      try {
-        const gltf=await this.assets.loadGLTF(name), root=gltf.scene;
-        const box=new THREE.Box3().setFromObject(root), size=box.getSize(new THREE.Vector3());
-        const h=Math.max(size.y,0.01), scale=targetHeight/h;
-        root.position.set(x-(box.min.x+box.max.x)*0.5*scale, -box.min.y*scale, z-(box.min.z+box.max.z)*0.5*scale);
-        root.scale.setScalar(scale); root.rotation.y=rot;
-        root.traverse(o=>{ if(o.isMesh){o.castShadow=false;o.receiveShadow=true;} });
-        this.group.add(root); this.loaded.push(name); return root;
-      } catch(e) { return null; }
-    }
-    async load() {
-      const jobs=[
-        this.addProp('kenney-roads-dumpster.glb',-13,-42,2.1,0),
-        this.addProp('kenney-roads-electricity-pole.glb',13,-42,8,0),
-        this.addProp('kenney-roads-traffic-light.glb',-13,42,5.5,Math.PI),
-        this.addProp('kenney-roads-construction-barrier.glb',13,42,1.2,Math.PI/2),
-        this.addProp('kenney-roads-road-sign-stop.glb',-42,13,3,Math.PI/2),
-        this.addProp('kenney-roads-road-sign-street.glb',42,-13,3,-Math.PI/2),
-        this.addPedestrian('npc-male-Superhero_Male_FullBody.gltf',-9,-20),
-        this.addPedestrian('npc-female-Superhero_Female_FullBody.gltf',9,-20)
-      ];
-      await Promise.all(jobs);
-      // Decode a small set of supplied particle sprites now; gameplay-specific emitters
-      // continue using the existing combat/flight VFX systems until their materials are wired.
-      this.particleTextures=[];
-      for(const n of ['vfx-particle-flame_01.png','vfx-particle-muzzle_01.png','vfx-particle-spark_01.png','vfx-smoke-explosion00.png']){
-        const t=await this.assets.loadTexture(n,{srgb:true,anisotropy:2});
-        if(t) this.particleTextures.push(t);
-      }
-      return this.loaded.length;
-    }
-    async addPedestrian(name,x,z) {
-      try {
-        const gltf=await this.assets.loadGLTF(name), root=gltf.scene;
-        const box=new THREE.Box3().setFromObject(root), size=box.getSize(new THREE.Vector3());
-        const scale=1.75/Math.max(size.y,0.01);
-        root.position.set(x-(box.min.x+box.max.x)*0.5*scale,-box.min.y*scale,z-(box.min.z+box.max.z)*0.5*scale);
-        root.scale.setScalar(scale);
-        root.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true;}});
-        this.group.add(root); this.loaded.push(name); return root;
-      } catch(e) { return null; }
-    }
+    constructor(scene,assets,perf){this.scene=scene;this.assets=assets;this.perf=perf;this.group=new THREE.Group();scene.add(this.group);this.loaded=[];this.textures={};this.pedestrians=[];}
+    report(n,e){hud.logError('COMMUNITY '+n+': '+(e&&e.message||e));}
+    place(root,x,z,h=1.8,rot=0){const box=new THREE.Box3().setFromObject(root),size=box.getSize(new THREE.Vector3()),k=h/Math.max(size.y,.01);root.scale.setScalar(k);root.position.set(x-(box.min.x+box.max.x)*.5*k,-box.min.y*k,z-(box.min.z+box.max.z)*.5*k);root.rotation.y=rot;root.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true;}});this.group.add(root);return root;}
+    fallback(x,z,i){const g=new THREE.Group(),coat=new THREE.MeshStandardMaterial({color:i%2?0x263e54:0x743638,roughness:.75}),skin=new THREE.MeshStandardMaterial({color:0xb98c70,roughness:.9});const add=(geo,mat,p)=>{const m=new THREE.Mesh(geo,mat);m.position.set(...p);g.add(m);};add(new THREE.CapsuleGeometry(.22,.62,4,7),coat,[0,.98,0]);add(new THREE.SphereGeometry(.17,10,8),skin,[0,1.55,0]);for(const d of [-1,1]){add(new THREE.CapsuleGeometry(.08,.42,3,6),coat,[d*.28,1.02,0]);add(new THREE.CapsuleGeometry(.09,.52,3,6),coat,[d*.12,.35,0]);}g.position.set(x,0,z);this.group.add(g);this.pedestrians.push(g);return g;}
+    async prop(n,x,z,h,r=0){try{const g=await this.assets.loadGLTF(n);this.place(g.scene,x,z,h,r);this.loaded.push(n);}catch(e){this.report(n,e);}}
+    async pedestrian(n,x,z,i){try{const g=await this.assets.loadGLTF(n);const root=this.place(g.scene,x,z,1.8,i%2?Math.PI:0);this.loaded.push(n);this.pedestrians.push(root);}catch(e){this.report(n,e);this.fallback(x,z,i);}}
+    async load(){await Promise.all([
+      this.prop('kenney-roads-dumpster.glb',-13,-42,2.1),this.prop('kenney-roads-electricity-pole.glb',13,-42,8),this.prop('kenney-roads-traffic-light.glb',-13,42,5.5,Math.PI),this.prop('kenney-roads-construction-barrier.glb',13,42,1.2,Math.PI/2),
+      this.pedestrian('npc-male-Superhero_Male_FullBody.gltf',-9,-20,0),this.pedestrian('npc-female-Superhero_Female_FullBody.gltf',9,-20,1),this.pedestrian('npc-male-Superhero_Male_FullBody.gltf',-12,22,2),this.pedestrian('npc-female-Superhero_Female_FullBody.gltf',12,22,3)
+    ]);
+    for(const [k,n] of Object.entries({flame:'vfx-particle-flame_01.png',muzzle:'vfx-particle-muzzle_01.png',spark:'vfx-particle-spark_01.png',smoke:'vfx-smoke-explosion00.png'})){const t=await this.assets.loadTexture(n,{srgb:true,anisotropy:2});if(t)this.textures[k]=t;}
+    return this.loaded.length;}
+    apply(hero,rep){const t=this.textures.flame;if(t)for(const j of hero.thrusters||[]){j.glow.material.map=t;j.glow.material.needsUpdate=true;j.flare.material.map=t;j.flare.material.needsUpdate=true;}if(rep&&this.textures.muzzle)rep.setTexture(this.textures.muzzle);}
   }
 
   // Hero first (playable immediately), city second; either failure is reported and never blocks the loop.
@@ -1914,6 +1856,7 @@ async function boot() {
   await community.load().catch(e => hud.logError('COMMUNITY ASSETS: ' + e.message));
   const environment = (await assets.loadEXR('modern_evening_street_1k.exr').catch(() => null)) || (await assets.loadEXR('urban_street_01_1k.exr').catch(() => null));
   if (environment) sm.setEnvironment(environment);
+  community.apply(hero, rep);
   assets.release();
   const degraded = !heroOk || !cityOk || failures.length > 0;
   hud.setLoading(degraded ? 'CORE SYSTEMS READY · LIMITED ASSETS' : 'SYSTEMS ONLINE · READY FOR DEPLOYMENT', 100);
