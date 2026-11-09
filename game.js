@@ -805,6 +805,10 @@ class CityManager {
 
 
 
+// Authored NYC FBX is kept mounted for future validation, but is not used in gameplay yet.
+// Its current render produces oversized untextured wall faces on mobile; use the tested procedural Manhattan grid.
+const USE_AUTHORED_NYC_WORLD = false;
+
 // ===== environment/NYCWorld.js =====
 // Optional authored NYC world. Procedural city remains the safe fallback if the archive is absent.
 class NYCWorld {
@@ -2172,7 +2176,7 @@ async function boot() {
   hud.setLoading(degraded ? 'CORE SYSTEMS READY · LIMITED ASSETS' : 'SYSTEMS ONLINE · READY FOR DEPLOYMENT', 100);
   setTimeout(() => hud.hideLoading(), 900);
   // Start grounded in WALK mode. Flight begins only when the player presses FLY.
-  move.pos.y = nycOk ? nycWorld.surfaceAt(move.pos.x, move.pos.z, nycWorld.bounds.max.y) : city.surfaceAt(move.pos.x, move.pos.z);
+  move.pos.y = USE_AUTHORED_NYC_WORLD && nycOk ? nycWorld.surfaceAt(move.pos.x, move.pos.z, nycWorld.bounds.max.y) : city.surfaceAt(move.pos.x, move.pos.z);
   move.mode = MODE.WALK;
   hud.setFlightUI(false);
   hud.toast(heroOk && cityOk ? "MARK 85 ONLINE" : 'DEGRADED MODE — SEE ERRORS');
@@ -2197,7 +2201,7 @@ async function boot() {
     if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(v[1]); u.rate = 0.94; u.pitch = 0.88; window.speechSynthesis.speak(u); }
   }));
   document.querySelectorAll('.missionCard[data-mission]').forEach(card=>card.addEventListener('click',()=>{const value=card.dataset.mission;const select=document.getElementById('missionSelect');if(select)select.value=value;document.querySelectorAll('.missionCard').forEach(c=>c.classList.toggle('active',c===card));}));
-  hud.on('start', () => { const selected=document.getElementById('missionSelect')?.value||'city'; missionEnv.setMission(selected); mission.build(selected); if(selected==='city'&&nycOk){nycWorld.activate();move.pos.set(0,nycWorld.surfaceAt(0,0,nycWorld.bounds.max.y),0);}else{nycWorld.group.visible=false;city.group.visible=selected==='city';move.pos.copy(missionEnv.spawn);if(selected==='city')hud.toast('MANHATTAN GRID ONLINE');} move.vel.set(0,0,0); move.heading=0; move.mode=MODE.WALK; gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); hud.setFlightUI(false); cine.trigger('INTRO', 2.4); });
+  hud.on('start', () => { const selected=document.getElementById('missionSelect')?.value||'city'; missionEnv.setMission(selected); mission.build(selected); if(selected==='city'&&USE_AUTHORED_NYC_WORLD&&nycOk&&nycWorld.activate()){move.pos.set(0,nycWorld.surfaceAt(0,0,nycWorld.bounds.max.y),0);}else{nycWorld.group.visible=false;city.group.visible=selected==='city';move.pos.copy(missionEnv.spawn);if(selected==='city')hud.toast('MANHATTAN GRID ONLINE');} move.vel.set(0,0,0); move.heading=0; move.mode=MODE.WALK; gameStarted = true; document.getElementById('mainmenu').classList.add('hide'); document.getElementById('ui').classList.remove('gameHidden'); hud.setFlightUI(false); cine.trigger('INTRO', 2.4); });
 
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   let cameraMode='THIRD', lockedTarget=null;
