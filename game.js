@@ -1883,7 +1883,7 @@ async function boot() {
       // Decode a small set of supplied particle sprites now; gameplay-specific emitters
       // continue using the existing combat/flight VFX systems until their materials are wired.
       this.particleTextures=[];
-      for(const n of ['vfx-particle-flame_01.png','vfx-particle-muzzle_01.png','vfx-particle-sparks_01.png','vfx-smoke-explosion00.png']){
+      for(const n of ['vfx-particle-flame_01.png','vfx-particle-muzzle_01.png','vfx-particle-spark_01.png','vfx-smoke-explosion00.png']){
         const t=await this.assets.loadTexture(n,{srgb:true,anisotropy:2});
         if(t) this.particleTextures.push(t);
       }
@@ -1910,7 +1910,7 @@ async function boot() {
     traffic.loadModels(assets).catch(e => { hud.logError('TRAFFIC MODELS: ' + e.message); return false; }),
     Promise.resolve(false).then(ok=>{nycOk=ok;}),
   ]);
-  const community = new CommunityAssetLayer(sm.scene, assets, perf);\n  await community.load().catch(e => hud.logError('COMMUNITY ASSETS: ' + e.message));\n  const environment = await assets.loadEXR('modern_evening_street_1k.exr').catch(() => assets.loadEXR('urban_street_01_1k.exr').catch(() => null));
+  const community = new CommunityAssetLayer(sm.scene, assets, perf);\n  await community.load().catch(e => hud.logError('COMMUNITY ASSETS: ' + e.message));\n  const environment = (await assets.loadEXR('modern_evening_street_1k.exr').catch(() => null)) || (await assets.loadEXR('urban_street_01_1k.exr').catch(() => null));
   if (environment) sm.setEnvironment(environment);
   assets.release();
   const degraded = !heroOk || !cityOk || failures.length > 0;
