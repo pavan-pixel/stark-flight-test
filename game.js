@@ -127,6 +127,19 @@ class AssetManager {
         this.shrinkMaterials(g.scene); this._ok(name); return g;
       }
       const text = await f.async('string'), j = JSON.parse(text);
+      // The supplied apartment archive contains shared facade maps, while its exported
+      // GLTF still points at per-material filenames that are not in the archive.
+      // Remap those references to the included shared maps and omit unavailable normals.
+      if (lc(name) === 'modular_urban_apartments_facade_1k.gltf') {
+        for (const image of (j.images || [])) {
+          const u = (image.uri || '').toLowerCase();
+          if (u.includes('_diff_')) image.uri = 'textures/modular_urban_apartments_facade_diff_1k.jpg';
+          else if (u.includes('_ao_')) image.uri = 'textures/modular_urban_apartments_facade_ao_1k.jpg';
+          else if (u.includes('_arm_') || u.includes('_metal_') || u.includes('_rough_')) image.uri = 'textures/modular_urban_apartments_facade_arm_1k.jpg';
+          else if (u.includes('_nor_gl_')) image.uri = 'textures/modular_urban_apartments_facade_arm_1k.jpg';
+        }
+        for (const material of (j.materials || [])) delete material.normalTexture;
+      }
       await Promise.all([...(j.images || []), ...(j.buffers || [])].filter(x => x.uri && !x.uri.startsWith('data:')).map(x => this.url(base(x.uri))));
       const g = await new Promise((res, rej) => this.gltf.parse(text, '', res, rej));
       this.shrinkMaterials(g.scene); this._ok(name); return g;
@@ -343,10 +356,13 @@ class CityManager {
     progress('BUILDING MANHATTAN ARCHITECTURE', 10);
     // The photogrammetry FBX is deliberately not used for the playable city.
     // Build a clean, deterministic Manhattan-style grid from instanced geometry.
-    const [treeLarge, treeSmall, decalCross, decalYellow] = await Promise.all([
+    const [treeLarge, treeSmall, decalCross, decalYellow, apartment] = await Promise.all([
       a.has('suburban-tree-large.glb') ? a.loadGLTF('suburban-tree-large.glb').catch(() => null) : Promise.resolve(null),
       a.has('suburban-tree-small.glb') ? a.loadGLTF('suburban-tree-small.glb').catch(() => null) : Promise.resolve(null),
       a.loadGLTF(base + 'Decal_Crosswalk.gltf'), a.loadGLTF(base + 'Decal_DoubleYellow_Straight.gltf'),
+      a.has('modular_urban_apartments_facade_1k.gltf')
+        ? a.loadGLTF('modular_urban_apartments_facade_1k.gltf').catch(() => null)
+        : Promise.resolve(null),
     ]);
     progress('PROCESSING MANHATTAN DISTRICTS', 55);
     this.parks = [];
@@ -379,7 +395,7 @@ class CityManager {
     this.pbr = pbr;
     progress('BUILDING STREETS', 70);
     this._buildGround(detailedAsphalt || asphalt, pbr.concreteColorPBR || detailedConcrete || concrete, asphaltNormal, asphaltRough, pbr.concreteNormalPBR || concreteNormal, pbr.concreteRoughPBR || concreteRough);
-    this._buildManhattanArchitecture(pbr);
+    this._buildManhattanArchitecture(pbr, apartment?.scene || null);
     this._buildDecals(decalCross.scene, decalYellow.scene);
     this._buildStreetLights();
     if (treeLarge && treeSmall) this._buildNature(treeLarge.scene, treeSmall.scene);
@@ -502,7 +518,7 @@ class CityManager {
     });
   }
 
-  _buildManhattanArchitecture(pbr = {}) {
+  _buildManhattanArchitecture(pbr = {}, apartmentRoot = null) {
     const makeFacade = (style) => {
       const canvas=document.createElement('canvas');canvas.width=canvas.height=512;
       const ctx=canvas.getContext('2d');
@@ -540,6 +556,35 @@ class CityManager {
       for(const t of [brickNormal,brickRough])if(t){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(2,3);}
       const side=new THREE.MeshStandardMaterial({map:tex,normalMap:brickNormal||null,roughnessMap:brickRough||null,roughness:s===0||s===3?.26:.78,metalness:s===0||s===3?.48:.04,envMapIntensity:s===0||s===3?1.05:.55});
       facadeMats.push([side,side,roofMat,roofMat,side,side]);
+    }
+    if (apartmentRoot) {
+      // This download is a modular facade kit, not a complete apartment building.
+      // Reuse its actual PBR materials on procedural building instances instead of
+      // dropping the kit's individual wall/window pieces into the street as a pile.
+      const apartmentMats = {};
+      apartmentRoot.traverse(o => {
+        if (!o.isMesh) return;
+        for (const mat of (Array.isArray(o.material) ? o.material : [o.material])) {
+          if (!mat || !mat.name) continue;
+          const n = mat.name.toLowerCase();
+          if (n.includes('_objects')) apartmentMats.wall = mat.clone();
+          else if (n.includes('_plaster')) apartmentMats.plaster = mat.clone();
+          else if (n.includes('_trim_01')) apartmentMats.trim = mat.clone();
+          else if (n.includes('_glass')) apartmentMats.glass = mat.clone();
+        }
+      });
+      if (apartmentMats.wall) {
+        apartmentMats.wall.side = THREE.DoubleSide;
+        apartmentMats.wall.roughness = 0.78;
+        apartmentMats.wall.envMapIntensity = 0.45;
+        facadeMats[1] = [apartmentMats.wall, apartmentMats.wall, roofMat, roofMat, apartmentMats.wall, apartmentMats.wall];
+      }
+      if (apartmentMats.plaster) {
+        apartmentMats.plaster.side = THREE.DoubleSide;
+        apartmentMats.plaster.roughness = 0.84;
+        apartmentMats.plaster.envMapIntensity = 0.4;
+        facadeMats[2] = [apartmentMats.plaster, apartmentMats.plaster, roofMat, roofMat, apartmentMats.plaster, apartmentMats.plaster];
+      }
     }
     const boxGeo=new THREE.BoxGeometry(1,1,1);
     const mainMeshes=facadeMats.map(mats=>{const im=new THREE.InstancedMesh(boxGeo,mats,GRID*GRID*4);im.count=0;im.castShadow=true;im.receiveShadow=true;im.frustumCulled=false;this.group.add(im);return im;});
@@ -607,6 +652,8 @@ class CityManager {
         this.colliders.push({minX:x-25,maxX:x+25,minZ:z-25,maxZ:z+25,h:187});
       }
     };
+    // The modular apartment materials are now used by the Manhattan building instances.
+    // Keep the landmark geometry here; do not place the modular source kit as a loose prop. 
     addLandmark(-55,-55,1,'empire');
     addLandmark(55,-55,0,'chrysler');
     addLandmark(-55,55,3,'wtc');
@@ -2031,7 +2078,7 @@ async function boot() {
   perf.onTierChange = t => { sm.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio)); city.setRadii(t.nearRadius, t.farRadius); hud.toast('QUALITY: ' + t.name.toUpperCase()); };
 
   hud.setLoading('READING ASSET ARCHIVES', 2);
-  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip', 'stark-next-animations.zip', 'stark-next-city.zip', 'stark-next-apartments.zip', 'kenney_city-kit-commercial_2_1.zip', 'stark-environment-pack.zip', 'stark-nyc-world-optimized.zip', 'stark-city-assets.zip', 'stark-npc-male.zip', 'stark-npc-female.zip', 'stark-npc-animations.zip', 'stark-vfx-assets.zip', 'stark-photoreal-assets-23mb.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
+  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip', 'stark-next-animations.zip', 'stark-next-city.zip', 'stark-next-apartments.zip', 'kenney_city-kit-commercial_2_1.zip', 'stark-environment-pack.zip', 'stark-nyc-world-optimized.zip', 'stark-city-assets.zip', 'stark-npc-male.zip', 'stark-npc-female.zip', 'stark-npc-animations.zip', 'stark-vfx-assets.zip', 'stark-photoreal-assets-23mb.zip', 'stark-apartment-model.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
   // Optional community asset layer: static pedestrian silhouettes and street dressing.
   // NPC animation clips are mounted for subsequent retargeting; they are not played until
   // skeleton compatibility is verified, avoiding broken rigs on mobile.
@@ -2112,7 +2159,7 @@ async function boot() {
     hero.load((t, p) => hud.setLoading(t, p * 0.45)).catch(e => { heroOk = false; hud.setLoading('MARK 85 ERROR: ' + e.message, 100); }),
     city.load((t, p) => hud.setLoading(t, 45 + p * 0.55)).catch(e => { cityOk = false; hud.logError('CITY: ' + e.message); }),
     traffic.loadModels(assets).catch(e => { hud.logError('TRAFFIC MODELS: ' + e.message); return false; }),
-    Promise.resolve(false).then(ok=>{nycOk=ok;}),
+    nycWorld.load((t,p)=>hud.setLoading(t,45+p*.55)).then(ok=>{nycOk=ok;}).catch(e=>{nycOk=false;hud.logError('NYC WORLD: '+e.message);}),
   ]);
   const community = new CommunityAssetLayer(sm.scene, assets, perf);
   await community.load().catch(e => hud.logError('COMMUNITY ASSETS: ' + e.message));
