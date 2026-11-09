@@ -137,6 +137,7 @@ class AssetManager {
     try {
       const url = await this.url(name);
       await this.prefetch(/^for_substance.*\.(png|jpe?g|tga)$/);
+      await this.prefetch(/^(car_|glass\.)[^/]*\.(png|jpe?g|tga)$/i);
       if (lc(name) === 'newyork.fbx') await this.prefetch(/^new york-\d+-texture\.png$/i);
       const m = new THREE.LoadingManager(); m.setURLModifier(u => this.urls.get(lc(base(u))) || u);
       const o = await new FBXLoader(m).loadAsync(url); this._ok(name); return o;
@@ -365,8 +366,20 @@ class CityManager {
       a.loadTexture('concrete-roughness.jpg', { repeat: 14 }),
     ]);
     progress('BUILDING STREETS', 70);
-    this._buildGround(detailedAsphalt || asphalt, detailedConcrete || concrete, asphaltNormal, asphaltRough, concreteNormal, concreteRough);
-    this._buildManhattanArchitecture();
+    const pbr = {};
+    const pbrFiles = {
+      brick106Normal:'pbr-bricks106-normalgl.png', brick106Rough:'pbr-bricks106-roughness.png', brick106Color:'pbr-bricks106-color.png',
+      brick085Normal:'pbr-bricks085-normalgl.png', brick085Rough:'pbr-bricks085-roughness.png', brick085Color:'pbr-bricks085-color.png',
+      brick104Normal:'pbr-bricks104-normalgl.png', brick104Rough:'pbr-bricks104-roughness.png', brick104Color:'pbr-bricks104-color.png',
+      concreteNormalPBR:'pbr-concrete028-normalgl.png', concreteRoughPBR:'pbr-concrete028-roughness.png', concreteColorPBR:'pbr-concrete028-color.png'
+    };
+    await Promise.all(Object.entries(pbrFiles).map(async ([key,file]) => {
+      if (a.has(file)) pbr[key] = await a.loadTexture(file, { srgb:key.endsWith('Color'), anisotropy:this.perf.isMobile?4:8 });
+    }));
+    this.pbr = pbr;
+    progress('BUILDING STREETS', 70);
+    this._buildGround(detailedAsphalt || asphalt, pbr.concreteColorPBR || detailedConcrete || concrete, asphaltNormal, asphaltRough, pbr.concreteNormalPBR || concreteNormal, pbr.concreteRoughPBR || concreteRough);
+    this._buildManhattanArchitecture(pbr);
     this._buildDecals(decalCross.scene, decalYellow.scene);
     this._buildStreetLights();
     if (treeLarge && treeSmall) this._buildNature(treeLarge.scene, treeSmall.scene);
@@ -489,7 +502,7 @@ class CityManager {
     });
   }
 
-  _buildManhattanArchitecture() {
+  _buildManhattanArchitecture(pbr = {}) {
     const makeFacade = (style) => {
       const canvas=document.createElement('canvas');canvas.width=canvas.height=512;
       const ctx=canvas.getContext('2d');
@@ -499,8 +512,9 @@ class CityManager {
         ['#563d37','#936454','#d4ad96','#2b2222'],
         ['#182531','#405568','#b2c5d1','#070f18']
       ];
-      const p=palettes[style%palettes.length],grad=ctx.createLinearGradient(0,0,512,0);
-      grad.addColorStop(0,p[0]);grad.addColorStop(.48,p[1]);grad.addColorStop(1,p[0]);ctx.fillStyle=grad;ctx.fillRect(0,0,512,512);
+      const p=palettes[style%palettes.length],brick=style===1?pbr.brick104Color:(style===2?pbr.brick085Color:null);
+      if(brick && brick.image) { ctx.drawImage(brick.image,0,0,512,512); ctx.fillStyle='rgba(28,24,20,.12)'; ctx.fillRect(0,0,512,512); }
+      else { const grad=ctx.createLinearGradient(0,0,512,0);grad.addColorStop(0,p[0]);grad.addColorStop(.48,p[1]);grad.addColorStop(1,p[0]);ctx.fillStyle=grad;ctx.fillRect(0,0,512,512); }
       const cols=12,rows=20,cw=512/cols,ch=512/rows;
       for(let row=0;row<rows;row++)for(let col=0;col<cols;col++){
         const x=col*cw+5,y=row*ch+4,w=cw-10,h=ch-8,lit=((row*17+col*29+style*13)%17===0)||((row*7+col*11+style)%31===0);
@@ -521,7 +535,10 @@ class CityManager {
     const facadeTextures=[];
     for(let s=0;s<4;s++){
       const tex=makeFacade(s); facadeTextures.push(tex);
-      const side=new THREE.MeshStandardMaterial({map:tex,roughness:s===0||s===3?.26:.58,metalness:s===0||s===3?.48:.16,envMapIntensity:s===0||s===3?1.05:.55});
+      const brickNormal=s===1?pbr.brick104Normal:(s===2?pbr.brick085Normal:null);
+      const brickRough=s===1?pbr.brick104Rough:(s===2?pbr.brick085Rough:null);
+      for(const t of [brickNormal,brickRough])if(t){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(2,3);}
+      const side=new THREE.MeshStandardMaterial({map:tex,normalMap:brickNormal||null,roughnessMap:brickRough||null,roughness:s===0||s===3?.26:.78,metalness:s===0||s===3?.48:.04,envMapIntensity:s===0||s===3?1.05:.55});
       facadeMats.push([side,side,roofMat,roofMat,side,side]);
     }
     const boxGeo=new THREE.BoxGeometry(1,1,1);
@@ -1533,8 +1550,15 @@ class TrafficSystem {
     this.scene = scene;
   }
   async loadModels(assets) {
-    const names = ['sedan', 'suv', 'taxi', 'van', 'police', 'delivery', 'truck', 'ambulance'];
-    const loaded = (await Promise.all(names.map(n => assets.loadGLTF(`vehicle-${n}.glb`).catch(() => null)))).filter(Boolean);
+    let loaded = [];
+    // Prefer the supplied detailed sedan/taxi/police FBX models when present.
+    const fbxNames = ['Taxi.fbx','Car.fbx','Police.fbx'];
+    const fbx = (await Promise.all(fbxNames.filter(n=>assets.has(n)).map(n=>assets.loadFBX(n).catch(()=>null)))).filter(Boolean);
+    if(fbx.length) loaded = fbx.map(scene=>({scene}));
+    if(!loaded.length){
+      const names = ['sedan', 'suv', 'taxi', 'van', 'police', 'delivery', 'truck', 'ambulance'];
+      loaded = (await Promise.all(names.map(n => assets.loadGLTF(`vehicle-${n}.glb`).catch(() => null)))).filter(Boolean);
+    }
     if (!loaded.length) return false;
     const bounds = loaded.map(g => new THREE.Box3().setFromObject(g.scene));
     for (let i = 0; i < this.count; i++) {
@@ -2007,7 +2031,7 @@ async function boot() {
   perf.onTierChange = t => { sm.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio)); city.setRadii(t.nearRadius, t.farRadius); hud.toast('QUALITY: ' + t.name.toUpperCase()); };
 
   hud.setLoading('READING ASSET ARCHIVES', 2);
-  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip', 'stark-next-animations.zip', 'stark-next-city.zip', 'stark-next-apartments.zip', 'kenney_city-kit-commercial_2_1.zip', 'stark-environment-pack.zip', 'stark-nyc-world-optimized.zip', 'stark-city-assets.zip', 'stark-npc-male.zip', 'stark-npc-female.zip', 'stark-npc-animations.zip', 'stark-vfx-assets.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
+  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip', 'stark-next-animations.zip', 'stark-next-city.zip', 'stark-next-apartments.zip', 'kenney_city-kit-commercial_2_1.zip', 'stark-environment-pack.zip', 'stark-nyc-world-optimized.zip', 'stark-city-assets.zip', 'stark-npc-male.zip', 'stark-npc-female.zip', 'stark-npc-animations.zip', 'stark-vfx-assets.zip', 'stark-photoreal-assets-23mb.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
   // Optional community asset layer: static pedestrian silhouettes and street dressing.
   // NPC animation clips are mounted for subsequent retargeting; they are not played until
   // skeleton compatibility is verified, avoiding broken rigs on mobile.
