@@ -1189,15 +1189,17 @@ class IronMan {
       const amount=flightMode?thrust:0;
       jet.nozzle.visible=amount>.035;
       const pulse=1+Math.sin(performance.now()*.035+(isHand?1.4:0))*.055;
-      const length=(isHand?.72:1.35)*(.72+amount*.92)*(boost?1.55:1)*pulse;
-      jet.outer.scale.set(1,length,1);jet.outer.position.y=-.95*length;
-      jet.inner.scale.set(1,length*.9,1);jet.inner.position.y=-.675*length;
+      const length=(isHand?.46:1.35)*(.72+amount*.92)*(boost?1.4:1)*pulse;
+      // Hand jets point back toward the chase camera, so fade/shorten them as the camera gets close.
+      const camFade=this.camera?THREE.MathUtils.clamp((jet.nozzle.getWorldPosition(this._jetPos).distanceTo(this.camera.position)-2.5)/7,isHand?.12:.35,1):1;
+      jet.outer.scale.set(isHand?.6:1,length,isHand?.6:1);jet.outer.position.y=-.95*length;
+      jet.inner.scale.set(isHand?.6:1,length*.9,isHand?.6:1);jet.inner.position.y=-.675*length;
       jet.core.scale.set(1,length*.82,1);jet.core.position.y=-.46*length;
-      jet.outer.material.opacity=Math.min(.9,amount*.62);
-      jet.inner.material.opacity=Math.min(1,amount*.86);
-      jet.core.material.opacity=Math.min(1,amount*.95);
-      jet.glow.material.opacity=Math.min(1,amount*.9);
-      jet.flare.material.opacity=Math.min(.8,amount*(boost?.72:.42));
+      jet.outer.material.opacity=Math.min(.9,amount*.62)*camFade;
+      jet.inner.material.opacity=Math.min(1,amount*.86)*camFade;
+      jet.core.material.opacity=Math.min(1,amount*.95)*camFade;
+      jet.glow.material.opacity=Math.min(1,amount*.9)*camFade;
+      jet.flare.material.opacity=Math.min(.8,amount*(boost?.72:.42))*camFade;
       jet.glow.position.y=-1.75*length;jet.flare.position.y=-1.9*length;
       jet.glow.scale.set((isHand?.72:1)*length*.72,length*1.25,1);
       jet.flare.scale.set((isHand?1:1.55)*length,length*1.9,1);
@@ -1982,7 +1984,7 @@ async function boot() {
   const missionEnv = new MissionEnvironment(sm.scene, city);
   const mission = new CombatMission(sm.scene, hud);
   // Combat feedback: sparks/debris/shockwave, camera shake, hit-stop on kills and a red damage flash.
-  const fx = new ImpactFX(sm.scene); fx.camera = sm.camera; fx.surfaceAt = (x, z, y) => city.surfaceAt(x, z, y);
+  const fx = new ImpactFX(sm.scene); fx.camera = sm.camera; hero.camera = sm.camera; fx.surfaceAt = (x, z, y) => city.surfaceAt(x, z, y);
   mission.fx = fx; rep.fx = fx; rep.world = city; let hitStop = 0;
   fx.onImpact = (power, kind) => { cam.bump(Math.min(.32, .05 + .07 * power)); if (kind === 'kill' || power > 1.4) hitStop = Math.max(hitStop, .07); };
   const hitFlash = document.createElement('div');
