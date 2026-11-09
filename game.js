@@ -1867,7 +1867,12 @@ class ImpactFX {
     });
     this.fc = 0;
   }
-  setTextures(t) { if (t && t.smoke) { this.smokeTex = t.smoke; for (const p of this.puffs) { p.s.material.map = t.smoke; p.s.material.needsUpdate = true; } } }
+  setTextures(t) {
+    if(!t)return;
+    if(t.smoke){this.smokeTex=t.smoke;for(const p of this.puffs){p.s.material.map=t.smoke;p.s.material.needsUpdate=true;}}
+    if(t.spark){this.points.material.map=t.spark;this.points.material.needsUpdate=true;}
+    if(t.flame){for(const u of this.pulses){u.flash.material.map=t.flame;u.flash.material.needsUpdate=true;}}
+  }
 
   _floor(p) { try { return this.surfaceAt ? this.surfaceAt(p.x, p.z, p.y) : p.y - 1.3; } catch (e) { return p.y - 1.3; } }
   emitSparks(p, dir, n, speed, col) {
@@ -2009,7 +2014,7 @@ async function boot() {
   class CommunityAssetLayer {
     constructor(scene,assets,perf){
       this.scene=scene;this.assets=assets;this.perf=perf;this.group=new THREE.Group();scene.add(this.group);
-      this.loaded=[];this.textures={};this.pedestrians=[];this.clock=0;
+      this.loaded=[];this.textures={};this.pedestrians=[];this.clock=0;this.clips={};
     }
     report(n,e){hud.logError('COMMUNITY '+n+': '+(e&&e.message||e));}
     place(root,x,z,h=1.8,rot=0){
@@ -2018,51 +2023,40 @@ async function boot() {
       root.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true;}});
       this.group.add(root);return root;
     }
-    rigData(root){
-      const bones={leftArm:null,rightArm:null,leftForearm:null,rightForearm:null,leftLeg:null,rightLeg:null,leftShin:null,rightShin:null,spine:null};
-      root.traverse(o=>{
-        if(!o.isBone)return;
-        const n=o.name.toLowerCase().replace(/[^a-z]/g,'');
-        if(/leftarm$/.test(n))bones.leftArm=o;
-        else if(/rightarm$/.test(n))bones.rightArm=o;
-        else if(/leftforearm$/.test(n))bones.leftForearm=o;
-        else if(/rightforearm$/.test(n))bones.rightForearm=o;
-        else if(/leftupleg$|leftthigh$/.test(n))bones.leftLeg=o;
-        else if(/rightupleg$|rightthigh$/.test(n))bones.rightLeg=o;
-        else if(/leftleg$/.test(n))bones.leftShin=o;
-        else if(/rightleg$/.test(n))bones.rightShin=o;
-        else if(/spine$|spine1$/.test(n))bones.spine=o;
-      });
-      const joints=Object.entries(bones).filter(([,v])=>v).map(([key,bone])=>({key,bone,base:bone.rotation.clone()}));
-      return joints.length>=4?joints:null;
-    }
     fallback(x,z,i){
       const root=new THREE.Group(),coat=new THREE.MeshStandardMaterial({color:i%2?0x263e54:0x743638,roughness:.78}),skin=new THREE.MeshStandardMaterial({color:0xb98c70,roughness:.9}),pants=new THREE.MeshStandardMaterial({color:0x202a34,roughness:.86});
       const add=(parent,geo,mat,pos)=>{const m=new THREE.Mesh(geo,mat);m.position.set(...pos);m.castShadow=false;parent.add(m);return m;};
       add(root,new THREE.CapsuleGeometry(.21,.48,4,8),coat,[0,1.12,0]);add(root,new THREE.SphereGeometry(.15,10,8),skin,[0,1.62,0]);
-      const limbs=[];
-      for(const side of [-1,1]){
-        const arm=new THREE.Group();arm.position.set(side*.24,1.36,0);add(arm,new THREE.CapsuleGeometry(.065,.42,3,6),coat,[0,-.23,0]);root.add(arm);
-        const leg=new THREE.Group();leg.position.set(side*.12,.82,0);add(leg,new THREE.CapsuleGeometry(.085,.48,3,6),pants,[0,-.25,0]);root.add(leg);
-        limbs.push({arm,leg,side});
-      }
-      root.position.set(x,0,z);this.group.add(root);
-      const npc={root,joints:null,limbs,phase:i*1.7,speed:.8+(i%3)*.13,originX:x,originZ:z,radius:1.8,heading:i%2?Math.PI:0};
-      this.pedestrians.push(npc);return npc;
+      const limbs=[];for(const side of [-1,1]){const arm=new THREE.Group();arm.position.set(side*.24,1.36,0);add(arm,new THREE.CapsuleGeometry(.065,.42,3,6),coat,[0,-.23,0]);root.add(arm);const leg=new THREE.Group();leg.position.set(side*.12,.82,0);add(leg,new THREE.CapsuleGeometry(.085,.48,3,6),pants,[0,-.25,0]);root.add(leg);limbs.push({arm,leg,side});}
+      root.position.set(x,0,z);this.group.add(root);const npc={root,limbs,mixer:null,actions:{},phase:i*1.7,speed:.8+(i%3)*.13,originX:x,originZ:z,radius:2.2,heading:i%2?Math.PI:0};this.pedestrians.push(npc);return npc;
+    }
+    setupAnimation(root,index){
+      const mixer=new THREE.AnimationMixer(root),walk=this.clips.walk,idle=this.clips.idle,actions={};
+      if(idle){actions.idle=mixer.clipAction(idle);actions.idle.setLoop(THREE.LoopRepeat);actions.idle.play();}
+      if(walk){actions.walk=mixer.clipAction(walk);actions.walk.setLoop(THREE.LoopRepeat);actions.walk.enabled=true;actions.walk.setEffectiveWeight(0);}
+      return {mixer,actions};
     }
     async prop(n,x,z,h,r=0){try{const g=await this.assets.loadGLTF(n);this.place(g.scene,x,z,h,r);this.loaded.push(n);}catch(e){this.report(n,e);}}
     async pedestrian(n,x,z,i){
       try{
-        const g=await this.assets.loadGLTF(n),root=this.place(g.scene,x,z,1.8,i%2?Math.PI:0),joints=this.rigData(root);
-        if(!joints){this.group.remove(root);this.fallback(x,z,i);return;}
-        const npc={root,joints,limbs:null,phase:i*1.7,speed:.8+(i%3)*.13,originX:x,originZ:z,radius:2.2,heading:i%2?Math.PI:0};
+        const g=await this.assets.loadGLTF(n),root=this.place(g.scene,x,z,1.8,i%2?Math.PI:0),anim=this.setupAnimation(root,i);
+        if(!anim.actions.walk){this.report(n,new Error('compatible Walk_Carry_Loop clip unavailable'));this.group.remove(root);this.fallback(x,z,i);return;}
+        anim.actions.idle?.fadeOut(.01);anim.actions.walk.reset().setEffectiveWeight(1).fadeIn(.15).play();
+        const npc={root,limbs:null,mixer:anim.mixer,actions:anim.actions,phase:i*1.7,speed:.8+(i%3)*.13,originX:x,originZ:z,radius:2.2,heading:i%2?Math.PI:0};
         this.pedestrians.push(npc);this.loaded.push(n);
       }catch(e){this.report(n,e);this.fallback(x,z,i);}
     }
     async load(){
+      const anim=await this.assets.loadGLTF('npc-UAL2_Standard.glb');
+      const clips=anim.animations||[];
+      this.clips.walk=clips.find(c=>c.name==='Walk_Carry_Loop')||clips.find(c=>c.name==='Zombie_Walk_Fwd_Loop');
+      this.clips.idle=clips.find(c=>c.name==='Idle_Rail_Loop')||clips.find(c=>c.name==='Idle_FoldArms_Loop');
+      if(!this.clips.walk)throw new Error('UAL2 walk animation clip missing');
       await Promise.all([
         this.prop('kenney-roads-dumpster.glb',-13,-42,2.1),this.prop('kenney-roads-electricity-pole.glb',13,-42,8),
         this.prop('kenney-roads-traffic-light.glb',-13,42,5.5,Math.PI),this.prop('kenney-roads-construction-barrier.glb',13,42,1.2,Math.PI/2),
+        this.prop('kenney-roads-construction-cone.glb',-17,-38,.9),this.prop('kenney-roads-road-sign-warning.glb',17,38,3,Math.PI),
+        this.prop('kenney-commercial-detail-awning.glb',-42,-13,3.4,Math.PI/2),this.prop('kenney-commercial-detail-overhang.glb',42,13,3.6,-Math.PI/2),
         this.pedestrian('npc-male-Superhero_Male_FullBody.gltf',-9,-20,0),this.pedestrian('npc-female-Superhero_Female_FullBody.gltf',9,-20,1),
         this.pedestrian('npc-male-Superhero_Male_FullBody.gltf',-12,22,2),this.pedestrian('npc-female-Superhero_Female_FullBody.gltf',12,22,3)
       ]);
@@ -2074,25 +2068,12 @@ async function boot() {
     update(dt){
       this.clock+=dt;
       for(const n of this.pedestrians){
-        const phase=this.clock*n.speed+n.phase,walk=Math.sin(phase),counter=Math.cos(phase);
-        // Move along a short sidewalk loop; this is a lightweight crowd pass, not pathfinding.
+        n.phase+=dt*n.speed;const phase=n.phase;
         n.root.position.x=n.originX+Math.sin(phase*.22)*n.radius;
         n.root.position.z=n.originZ+Math.cos(phase*.22)*n.radius;
         n.root.rotation.y=n.heading+Math.sin(phase*.22)*.22;
-        if(n.joints)for(const j of n.joints){
-          const k=j.key;
-          j.bone.rotation.copy(j.base);
-          if(k==='leftArm')j.bone.rotation.x+=walk*.42;
-          else if(k==='rightArm')j.bone.rotation.x-=walk*.42;
-          else if(k==='leftForearm')j.bone.rotation.x-=.12;
-          else if(k==='rightForearm')j.bone.rotation.x-=.12;
-          else if(k==='leftLeg')j.bone.rotation.x+=walk*.58;
-          else if(k==='rightLeg')j.bone.rotation.x-=walk*.58;
-          else if(k==='leftShin')j.bone.rotation.x+=Math.max(0,-walk)*.48;
-          else if(k==='rightShin')j.bone.rotation.x+=Math.max(0,walk)*.48;
-          else if(k==='spine')j.bone.rotation.z+=counter*.025;
-        }
-        if(n.limbs)for(const l of n.limbs){l.arm.rotation.x=(l.side===-1?1:-1)*walk*.48;l.leg.rotation.x=(l.side===-1?-1:1)*walk*.62;}
+        if(n.mixer)n.mixer.update(dt);
+        if(n.limbs){const w=Math.sin(phase);for(const l of n.limbs){l.arm.rotation.x=(l.side===-1?1:-1)*w*.48;l.leg.rotation.x=(l.side===-1?-1:1)*w*.62;}}
       }
     }
     apply(hero,rep){
