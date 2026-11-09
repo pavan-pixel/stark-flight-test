@@ -1851,7 +1851,57 @@ async function boot() {
   perf.onTierChange = t => { sm.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio)); city.setRadii(t.nearRadius, t.farRadius); hud.toast('QUALITY: ' + t.name.toUpperCase()); };
 
   hud.setLoading('READING ASSET ARCHIVES', 2);
-  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip', 'stark-next-animations.zip', 'stark-next-city.zip', 'stark-next-apartments.zip', 'kenney_city-kit-commercial_2_1.zip', 'stark-environment-pack.zip', 'stark-nyc-world-optimized.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
+  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip', 'stark-next-animations.zip', 'stark-next-city.zip', 'stark-next-apartments.zip', 'kenney_city-kit-commercial_2_1.zip', 'stark-environment-pack.zip', 'stark-nyc-world-optimized.zip', 'stark-city-assets.zip', 'stark-npc-male.zip', 'stark-npc-female.zip', 'stark-npc-animations.zip', 'stark-vfx-assets.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
+  // Optional community asset layer: static pedestrian silhouettes and street dressing.
+  // NPC animation clips are mounted for subsequent retargeting; they are not played until
+  // skeleton compatibility is verified, avoiding broken rigs on mobile.
+  class CommunityAssetLayer {
+    constructor(scene, assets, perf) { this.scene=scene; this.assets=assets; this.perf=perf; this.group=new THREE.Group(); this.scene.add(this.group); this.loaded=[]; }
+    async addProp(name, x, z, targetHeight=4, rot=0) {
+      try {
+        const gltf=await this.assets.loadGLTF(name), root=gltf.scene;
+        const box=new THREE.Box3().setFromObject(root), size=box.getSize(new THREE.Vector3());
+        const h=Math.max(size.y,0.01), scale=targetHeight/h;
+        root.position.set(x-(box.min.x+box.max.x)*0.5*scale, -box.min.y*scale, z-(box.min.z+box.max.z)*0.5*scale);
+        root.scale.setScalar(scale); root.rotation.y=rot;
+        root.traverse(o=>{ if(o.isMesh){o.castShadow=false;o.receiveShadow=true;} });
+        this.group.add(root); this.loaded.push(name); return root;
+      } catch(e) { return null; }
+    }
+    async load() {
+      const jobs=[
+        this.addProp('kenney-roads-dumpster.glb',-13,-42,2.1,0),
+        this.addProp('kenney-roads-electricity-pole.glb',13,-42,8,0),
+        this.addProp('kenney-roads-traffic-light.glb',-13,42,5.5,Math.PI),
+        this.addProp('kenney-roads-construction-barrier.glb',13,42,1.2,Math.PI/2),
+        this.addProp('kenney-roads-road-sign-stop.glb',-42,13,3,Math.PI/2),
+        this.addProp('kenney-roads-road-sign-street.glb',42,-13,3,-Math.PI/2),
+        this.addPedestrian('npc-male-Superhero_Male_FullBody.gltf',-9,-20),
+        this.addPedestrian('npc-female-Superhero_Female_FullBody.gltf',9,-20)
+      ];
+      await Promise.all(jobs);
+      // Decode a small set of supplied particle sprites now; gameplay-specific emitters
+      // continue using the existing combat/flight VFX systems until their materials are wired.
+      this.particleTextures=[];
+      for(const n of ['vfx-particle-flame_01.png','vfx-particle-muzzle_01.png','vfx-particle-spark_01.png','vfx-smoke-explosion00.png']){
+        const t=await this.assets.loadTexture(n,{srgb:true,anisotropy:2});
+        if(t) this.particleTextures.push(t);
+      }
+      return this.loaded.length;
+    }
+    async addPedestrian(name,x,z) {
+      try {
+        const gltf=await this.assets.loadGLTF(name), root=gltf.scene;
+        const box=new THREE.Box3().setFromObject(root), size=box.getSize(new THREE.Vector3());
+        const scale=1.75/Math.max(size.y,0.01);
+        root.position.set(x-(box.min.x+box.max.x)*0.5*scale,-box.min.y*scale,z-(box.min.z+box.max.z)*0.5*scale);
+        root.scale.setScalar(scale);
+        root.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true;}});
+        this.group.add(root); this.loaded.push(name); return root;
+      } catch(e) { return null; }
+    }
+  }
+
   // Hero first (playable immediately), city second; either failure is reported and never blocks the loop.
   let heroOk = true, cityOk = true, nycOk = false;
   await Promise.all([
@@ -1860,7 +1910,7 @@ async function boot() {
     traffic.loadModels(assets).catch(e => { hud.logError('TRAFFIC MODELS: ' + e.message); return false; }),
     Promise.resolve(false).then(ok=>{nycOk=ok;}),
   ]);
-  const environment = await assets.loadEXR('modern_evening_street_1k.exr').catch(() => null);
+  const community = new CommunityAssetLayer(sm.scene, assets, perf);\n  await community.load().catch(e => hud.logError('COMMUNITY ASSETS: ' + e.message));\n  const environment = (await assets.loadEXR('modern_evening_street_1k.exr').catch(() => null)) || (await assets.loadEXR('urban_street_01_1k.exr').catch(() => null));
   if (environment) sm.setEnvironment(environment);
   assets.release();
   const degraded = !heroOk || !cityOk || failures.length > 0;
