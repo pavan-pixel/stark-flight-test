@@ -2031,7 +2031,7 @@ async function boot() {
   perf.onTierChange = t => { sm.renderer.setPixelRatio(Math.min(devicePixelRatio, t.pixelRatio)); city.setRadii(t.nearRadius, t.farRadius); hud.toast('QUALITY: ' + t.name.toUpperCase()); };
 
   hud.setLoading('READING ASSET ARCHIVES', 2);
-  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip', 'stark-next-animations.zip', 'stark-next-city.zip', 'stark-next-apartments.zip', 'kenney_city-kit-commercial_2_1.zip', 'stark-environment-pack.zip', 'stark-nyc-world-optimized.zip', 'stark-city-assets.zip', 'stark-npc-male.zip', 'stark-npc-female.zip', 'stark-npc-animations.zip', 'stark-vfx-assets.zip', 'stark-photoreal-assets.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
+  await assets.mountZips(['source.zip', 'textures.zip', 'stark-city-part-1.zip', 'stark-city-part-2.zip', 'stark-city-part-3.zip', 'stark-city-part-4.zip', 'stark-animation-assets.zip', 'stark-next-animations.zip', 'stark-next-city.zip', 'stark-next-apartments.zip', 'kenney_city-kit-commercial_2_1.zip', 'stark-environment-pack.zip', 'stark-nyc-world-optimized.zip', 'stark-city-assets.zip', 'stark-npc-male.zip', 'stark-npc-female.zip', 'stark-npc-animations.zip', 'stark-vfx-assets.zip', 'stark-photoreal-assets-23mb.zip'], p => hud.setLoading('READING ASSET ARCHIVES', 2 + p * 8));
   // Optional community asset layer: static pedestrian silhouettes and street dressing.
   // NPC animation clips are mounted for subsequent retargeting; they are not played until
   // skeleton compatibility is verified, avoiding broken rigs on mobile.
