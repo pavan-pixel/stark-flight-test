@@ -1323,10 +1323,11 @@ class ThirdPersonCamera {
 
 // Milestone-1 port of the original FIRE button (pooled: no geometry/material created per shot).
 class RepulsorSystem {
-  constructor(scene){this.scene=scene;this.energy=100;this.last=0;this.shots=[];this.geo=new THREE.SphereGeometry(.16,12,10);this.mat=new THREE.MeshBasicMaterial({color:0xd9fbff,fog:false});this.axis=new THREE.Vector3(0,0,1);this.pool=[];this.spriteTexture=null;}
+  constructor(scene){this.scene=scene;this.energy=100;this.last=0;this.shots=[];this.geo=new THREE.SphereGeometry(.16,12,10);this.mat=new THREE.MeshBasicMaterial({color:0xd9fbff,fog:false});this.axis=new THREE.Vector3(0,0,1);this.pool=[];this.spriteTexture=null;this.fx=null;this.world=null;}
   setTexture(t){this.spriteTexture=t;}
   fire(origins,dir){const now=performance.now();if(this.energy<6||now-this.last<220)return false;this.last=now;this.energy-=6;for(const o of origins){const m=this.pool.pop()||new THREE.Mesh(this.geo,this.mat);m.position.copy(o);m.scale.set(.85,.85,4.2);m.quaternion.setFromUnitVectors(this.axis,dir);this.scene.add(m);let flash=null;if(this.spriteTexture){flash=new THREE.Sprite(new THREE.SpriteMaterial({map:this.spriteTexture,color:0xc9f8ff,transparent:true,opacity:.95,blending:THREE.AdditiveBlending,depthWrite:false}));flash.position.copy(o);flash.scale.set(1.2,1.2,1);this.scene.add(flash);}this.shots.push({m,flash,v:dir.clone().multiplyScalar(150),life:1.8});}return true;}
-  update(dt,regenBlocked,mission=null,hud=null){if(!regenBlocked)this.energy=Math.min(100,this.energy+dt*6);for(let i=this.shots.length-1;i>=0;i--){const q=this.shots[i],prev=q.m.position.clone();q.m.position.addScaledVector(q.v,dt);if(q.flash){q.flash.position.copy(q.m.position);q.flash.material.opacity=Math.max(0,Math.min(1,q.life*2));}if(mission&&(mission.hitSegment?mission.hitSegment(prev,q.m.position,hud):mission.hit(q.m.position,hud)))q.life=0;if((q.life-=dt)<=0){this.scene.remove(q.m);this.pool.push(q.m);if(q.flash){this.scene.remove(q.flash);q.flash.material.dispose();}this.shots.splice(i,1);}}}
+  update(dt,regenBlocked,mission=null,hud=null){if(!regenBlocked)this.energy=Math.min(100,this.energy+dt*6);for(let i=this.shots.length-1;i>=0;i--){const q=this.shots[i],prev=q.m.position.clone();q.m.position.addScaledVector(q.v,dt);if(q.flash){q.flash.position.copy(q.m.position);q.flash.material.opacity=Math.max(0,Math.min(1,q.life*2));}let struck=false;if(mission&&(mission.hitSegment?mission.hitSegment(prev,q.m.position,hud):mission.hit(q.m.position,hud))){q.life=0;struck=true;}
+if(!struck&&this.world&&this.fx){q.chk=(q.chk||0)+1;if(q.chk%3===0){const a0=q.last||prev,seg=q.m.position.clone().sub(a0),len=seg.length();if(len>1e-3){const d0=seg.divideScalar(len),h0=this.world.raycast(a0,d0,len);if(h0<len-1e-3){this.fx.spark(a0.clone().addScaledVector(d0,h0),d0.clone().negate());q.life=0;}}q.last=q.m.position.clone();}}if((q.life-=dt)<=0){this.scene.remove(q.m);this.pool.push(q.m);if(q.flash){this.scene.remove(q.flash);q.flash.material.dispose();}this.shots.splice(i,1);}}}
 }
 
 // ===== ui/HUD.js =====
@@ -1690,9 +1691,10 @@ class CombatMission {
   this.scene=scene;this.hud=hud;this.targets=[];this.enemyShots=[];this.complete=false;this.playerHealth=100;this.elapsed=0;
   this.group=new THREE.Group();scene.add(this.group);
   this.shotGeo=new THREE.SphereGeometry(.13,8,6);this.shotMat=new THREE.MeshBasicMaterial({color:0xff6b4b});
+  this.fx=null;this.dying=[];this.onPlayerHit=null;
  }
  build(type){
-  this.group.clear();this.targets=[];this.enemyShots=[];this.complete=false;this.elapsed=0;this.playerHealth=100;
+  this.group.clear();this.targets=[];this.enemyShots=[];this.dying=[];this.complete=false;this.elapsed=0;this.playerHealth=100;
   this.activeName=type==='carrier'?'CARRIER STRIKE':type==='base'?'BASE ASSAULT':'CITY DEFENSE';
   const positions=type==='carrier'?[[-22,7,-178],[22,7,-150],[-42,7,-115],[42,7,-205]]:type==='base'?[[-48,1,15],[48,1,15],[-75,1,-25],[75,1,-25]]:[[-18,18,-90],[18,18,-120],[-42,26,-155],[42,22,-185]];
   positions.forEach((p,i)=>{const root=this.makeSoldier(i);root.position.set(...p);this.group.add(root);this.targets.push({root,alive:true,hp:3,phase:i*1.4,attack:1.4+i*.45,kind:'soldier'});});
@@ -1723,7 +1725,7 @@ class CombatMission {
   for(const side of [-1,1]){const rotor=new THREE.Mesh(new THREE.CylinderGeometry(.05,.05,2.2,6),m);rotor.rotation.z=Math.PI/2;rotor.position.x=side*1.35;g.add(rotor);}
   const e=new THREE.Mesh(new THREE.SphereGeometry(.18,8,6),red);e.position.z=-.55;g.add(e);return g;
  }
- hit(point,hud){let found=null,dmin=7;for(const t of this.targets)if(t.alive){const d=t.root.position.distanceTo(point);if(d<dmin){found=t;dmin=d;}}if(!found)return false;this.damage(found,1,hud);return true;}
+ hit(point,hud){let found=null,dmin=7;for(const t of this.targets)if(t.alive){const d=t.root.position.distanceTo(point);if(d<dmin){found=t;dmin=d;}}if(!found)return false;const hd=found.root.position.clone().sub(point);hd.y=0;if(hd.lengthSq()<1e-4)hd.set(0,0,-1);this.damage(found,1,hud,point.clone(),hd.normalize());return true;}
  hitSegment(a,b,hud){
   const ab=b.clone().sub(a),lenSq=ab.lengthSq();let found=null,best=7;
   for(const t of this.targets)if(t.alive){
@@ -1731,28 +1733,70 @@ class CombatMission {
    const closest=a.clone().addScaledVector(ab,u),d=closest.distanceTo(t.root.position);
    if(d<best){best=d;found=t;}
   }
-  if(!found)return false;this.damage(found,1,hud);return true;
+  if(!found)return false;const sd=ab.lengthSq()>1e-8?ab.clone().normalize():new THREE.Vector3(0,0,-1);this.damage(found,1,hud,b.clone(),sd);return true;
  }
- damage(target,amount,hud){
-  target.hp-=amount;
-  if(target.hp<=0){target.alive=false;target.root.visible=false;if(hud)hud.toast(target.kind==='drone'?'DRONE DESTROYED':'HOSTILE NEUTRALIZED');}
-  else{target.root.scale.multiplyScalar(.94);if(hud)hud.toast('ARMOR HIT · '+target.hp+' HP');}
+ prep(t){
+  if(t.vel)return;
+  t.vel=new THREE.Vector3();t.flash=0;t.stagger=0;t.mats=[];t.root.rotation.order='YXZ';
+  t.root.traverse(o=>{const m=o.material;if(m&&m.emissive&&!t.mats.includes(m))t.mats.push(m);});
+ }
+ damage(target,amount,hud,point,dir){
+  this.prep(target);target.hp-=amount;
+  const at=point||target.root.position.clone().add(new THREE.Vector3(0,1.2,0));
+  const push=dir?dir.clone():new THREE.Vector3(0,0,-1);push.y=0;if(push.lengthSq()<1e-6)push.set(0,0,-1);push.normalize();
+  const power=amount>1?1.7:1,drone=target.kind==='drone';
+  if(target.hp<=0){
+   target.alive=false;target.flash=1;target.vel.addScaledVector(push,drone?3:8*power);if(drone)target.vel.y=2;
+   this.dying.push({t:target,time:0});
+   if(this.fx)this.fx.explode(at,drone?2.2:1.7);
+   if(hud)hud.toast(drone?'DRONE DESTROYED':'HOSTILE NEUTRALIZED');
+  }else{
+   target.flash=1;target.stagger=drone?0:.38;target.vel.addScaledVector(push,(drone?4:5.5)*power);
+   if(this.fx)this.fx.hit(at,push.clone().negate(),power);
+   if(hud)hud.toast('ARMOR HIT · '+target.hp+' HP');
+  }
   if(this.targets.every(t=>!t.alive)){this.complete=true;if(hud)hud.toast('MISSION COMPLETE · AREA SECURE');}
+ }
+ // Knockback slide, white-hot hit flash, stagger lean and the death sequence (soldiers topple, drones spiral and explode).
+ updateReactions(dt){
+  const fl=this.fx&&this.fx.surfaceAt;
+  for(const t of this.targets){
+   if(!t.vel)continue;
+   if(t.alive){
+    t.root.position.addScaledVector(t.vel,dt);t.vel.multiplyScalar(Math.max(0,1-6*dt));
+    t.stagger=Math.max(0,t.stagger-dt);if(t.kind==='soldier')t.root.rotation.x=t.stagger*.9;
+   }
+   if(t.flash>0||t.mats.length&&t.mats[0].emissiveIntensity!==1){
+    t.flash=Math.max(0,t.flash-dt*5);const f=t.flash;
+    for(const m of t.mats){m.emissive.setRGB(f,.45*f,.18*f);m.emissiveIntensity=1+f;}
+   }
+  }
+  for(let i=this.dying.length-1;i>=0;i--){
+   const e=this.dying[i],t=e.t,p=t.root.position;e.time+=dt;
+   if(t.kind==='drone'){
+    t.vel.y-=22*dt;p.addScaledVector(t.vel,dt);t.root.rotation.z+=dt*9;t.root.rotation.y+=dt*3;
+    let floor=-1e9;try{if(fl)floor=fl(p.x,p.z,p.y);}catch(err){}
+    if(p.y<=floor+.3||e.time>1.4){if(this.fx)this.fx.explode(p.clone(),2.6);t.root.visible=false;this.dying.splice(i,1);}
+   }else{
+    p.addScaledVector(t.vel,dt);t.vel.multiplyScalar(Math.max(0,1-4*dt));t.root.rotation.x=Math.min(1.5,e.time*3.4);
+    if(e.time>1.1){if(this.fx)this.fx.puff(p.clone().add(new THREE.Vector3(0,.5,0)),1);t.root.visible=false;this.dying.splice(i,1);}
+   }
+  }
  }
  melee(pos,heading,type,hero,hud){
   const f=new THREE.Vector3(-Math.sin(heading),0,-Math.cos(heading));let target=null,best=type==='kick'?4.4:3.5;
   for(const t of this.targets)if(t.alive&&t.kind==='soldier'){const d=t.root.position.clone().sub(pos),forward=d.x*f.x+d.z*f.z;if(forward>-.2&&d.length()<best){best=d.length();target=t;}}
   if(!target){if(hud)hud.toast('NO TARGET IN RANGE');return false;}
-  this.damage(target,type==='kick'?2:1,hud);return true;
+  const pt=target.root.position.clone().add(new THREE.Vector3(0,1.3,0));this.damage(target,type==='kick'?2:1,hud,pt,f.clone());return true;
  }
  fireAtPlayer(origin,pos){
   if(this.enemyShots.length>=24)return;
   const aim=new THREE.Vector3(pos.x-origin.x,pos.y+1.15-origin.y,pos.z-origin.z).normalize();
   const mesh=new THREE.Mesh(this.shotGeo,this.shotMat);mesh.position.copy(origin);mesh.scale.set(.85,.85,3.8);mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),aim);this.group.add(mesh);
-  this.enemyShots.push({mesh,velocity:aim.multiplyScalar(62),life:2.8});
+  if(this.fx)this.fx.muzzle(origin,aim);this.enemyShots.push({mesh,velocity:aim.multiplyScalar(62),life:2.8});
  }
  update(dt,pos,hud){
-  this.elapsed+=dt;
+  this.elapsed+=dt;this.updateReactions(dt);
   for(const t of this.targets)if(t.alive){
    t.phase+=dt;const p=t.root.position;
    if(t.kind==='drone'){
@@ -1760,7 +1804,7 @@ class CombatMission {
     t.attack-=dt;if(t.attack<=0){this.fireAtPlayer(p,pos);t.attack=2.8+((t.phase*10)%1)*.8;}
    }else{
     const dx=pos.x-p.x,dz=pos.z-p.z,d=Math.hypot(dx,dz);
-    if(d<46){
+    if(d<46&&!(t.stagger>0)){
      t.root.rotation.y=Math.atan2(dx,dz);
      if(d>6){p.x+=dx/d*dt*1.6;p.z+=dz/d*dt*1.6;}
      t.attack-=dt;
@@ -1775,7 +1819,7 @@ class CombatMission {
    const u=den>1e-8?THREE.MathUtils.clamp(playerAim.clone().sub(previous).dot(segment)/den,0,1):0;
    const closest=previous.addScaledVector(segment,u);
    if(closest.distanceTo(playerAim)<1.55){
-    this.playerHealth=Math.max(0,this.playerHealth-8);s.life=0;if(hud)hud.toast(this.playerHealth?'INCOMING FIRE · SUIT -8%':'SUIT CRITICAL · RETREAT');
+    this.playerHealth=Math.max(0,this.playerHealth-8);s.life=0;if(this.fx)this.fx.hit(playerAim.clone(),s.velocity.clone().normalize().negate(),.9,true);if(this.onPlayerHit)this.onPlayerHit(this.playerHealth);if(hud)hud.toast(this.playerHealth?'INCOMING FIRE · SUIT -8%':'SUIT CRITICAL · RETREAT');
    }
    if(s.life<=0){this.group.remove(s.mesh);this.enemyShots.splice(i,1);}
   }
@@ -1783,6 +1827,128 @@ class CombatMission {
   if(el)el.textContent=this.complete?'OBJECTIVE COMPLETE · AREA SECURE':'OPERATION '+this.activeName+' · HOSTILES '+alive+'/'+this.targets.length;
   const hv=document.getElementById('healthValue');if(hv)hv.textContent=Math.round(this.playerHealth)+'%';
  }
+}
+
+// ===== effects/ImpactFX.js =====
+// Pooled combat feedback: sparks, tumbling debris, shockwave rings, flash and smoke. No per-hit allocation of GPU resources.
+class ImpactFX {
+  constructor(scene) {
+    this.scene = scene; this.camera = null; this.surfaceAt = null; this.onImpact = null; this.smokeTex = null;
+    const glow = glowTexture();
+    // Sparks: one Points object, vertex colours fade to black (additive) as life runs out.
+    this.N = 320; this.cursor = 0;
+    this.sPos = new Float32Array(this.N * 3); this.sCol = new Float32Array(this.N * 3); this.sVel = new Float32Array(this.N * 3);
+    this.sBase = new Float32Array(this.N * 3); this.sLife = new Float32Array(this.N); this.sMax = new Float32Array(this.N).fill(1);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(this.sPos, 3)); g.setAttribute('color', new THREE.BufferAttribute(this.sCol, 3));
+    this.points = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.42, map: glow, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    this.points.frustumCulled = false; scene.add(this.points);
+    // Debris chunks (instanced).
+    this.D = 72; this.dc = 0;
+    this.deb = Array.from({ length: this.D }, () => ({ p: new THREE.Vector3(), v: new THREE.Vector3(), r: new THREE.Euler(), rv: new THREE.Vector3(), life: 0, fl: 0 }));
+    this.debMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.16, 0.1, 0.22), new THREE.MeshStandardMaterial({ color: 0x858d96, metalness: 0.7, roughness: 0.45 }), this.D);
+    this.debMesh.frustumCulled = false; this.debMesh.count = this.D;
+    this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._s = new THREE.Vector3(); this._z = new THREE.Matrix4().makeScale(0, 0, 0);
+    for (let i = 0; i < this.D; i++) this.debMesh.setMatrixAt(i, this._z);
+    scene.add(this.debMesh);
+    // Flash + shockwave ring pulses.
+    this.pulses = Array.from({ length: 8 }, () => {
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 1, 28), new THREE.MeshBasicMaterial({ color: 0xffc58a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+      const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0xffe2b0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+      ring.visible = flash.visible = false; scene.add(ring, flash); return { ring, flash, t: 1, dur: 0.4, size: 1 };
+    });
+    this.pc = 0;
+    // Smoke puffs.
+    this.puffs = Array.from({ length: 18 }, () => {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0x5d636a, transparent: true, opacity: 0, depthWrite: false, fog: true }));
+      s.visible = false; scene.add(s); return { s, t: 1, size: 1 };
+    });
+    this.fc = 0;
+  }
+  setTextures(t) { if (t && t.smoke) { this.smokeTex = t.smoke; for (const p of this.puffs) { p.s.material.map = t.smoke; p.s.material.needsUpdate = true; } } }
+
+  _floor(p) { try { return this.surfaceAt ? this.surfaceAt(p.x, p.z, p.y) : p.y - 1.3; } catch (e) { return p.y - 1.3; } }
+  emitSparks(p, dir, n, speed, col) {
+    for (let k = 0; k < n; k++) {
+      const i = this.cursor = (this.cursor + 1) % this.N, j = i * 3;
+      const rx = Math.random() * 2 - 1, ry = Math.random() * 2 - 1, rz = Math.random() * 2 - 1, l = Math.hypot(rx, ry, rz) || 1, sp = speed * (0.35 + Math.random() * 0.9);
+      this.sVel[j] = (rx / l * 0.8 + dir.x * 0.7) * sp; this.sVel[j + 1] = (ry / l * 0.8 + dir.y * 0.7 + 0.25) * sp; this.sVel[j + 2] = (rz / l * 0.8 + dir.z * 0.7) * sp;
+      this.sPos[j] = p.x; this.sPos[j + 1] = p.y; this.sPos[j + 2] = p.z;
+      this.sBase[j] = col[0]; this.sBase[j + 1] = col[1]; this.sBase[j + 2] = col[2];
+      this.sLife[i] = this.sMax[i] = 0.35 + Math.random() * 0.55;
+    }
+  }
+  emitDebris(p, dir, n, speed) {
+    const fl = this._floor(p);
+    for (let k = 0; k < n; k++) {
+      const d = this.deb[this.dc = (this.dc + 1) % this.D];
+      d.p.copy(p); d.fl = fl; d.life = 1.2 + Math.random() * 0.8;
+      d.v.set(Math.random() - 0.5, Math.random() * 0.8 + 0.2, Math.random() - 0.5).multiplyScalar(speed).addScaledVector(dir, speed * 0.6);
+      d.r.set(Math.random() * 6, Math.random() * 6, Math.random() * 6); d.rv.set(Math.random() * 14 - 7, Math.random() * 14 - 7, Math.random() * 14 - 7);
+    }
+  }
+  pulse(p, size, color = 0xffc58a, dur = 0.38) {
+    const u = this.pulses[this.pc = (this.pc + 1) % this.pulses.length];
+    u.t = 0; u.dur = dur; u.size = size; u.ring.position.copy(p); u.flash.position.copy(p);
+    u.ring.material.color.setHex(color); u.ring.visible = u.flash.visible = true;
+  }
+  puff(p, size = 1) { const u = this.puffs[this.fc = (this.fc + 1) % this.puffs.length]; u.t = 0; u.size = size; u.s.position.copy(p); u.s.visible = true; }
+
+  // Small hit: armour spark spray, a couple of chips, flash + ring.
+  hit(p, spray, power = 1, onPlayer = false) {
+    const col = onPlayer ? [1, 0.35, 0.25] : [1, 0.72, 0.38];
+    this.emitSparks(p, spray, Math.round(18 + 14 * power), 9 + 4 * power, col);
+    this.emitDebris(p, spray, 2 + Math.round(power * 2), 5 + 2 * power);
+    this.pulse(p, 0.9 * power, onPlayer ? 0xff7a5a : 0xffc58a);
+    if (this.onImpact) this.onImpact(onPlayer ? 0.8 : power, 'hit');
+  }
+  // Kill / big explosion.
+  explode(p, power = 2) {
+    const up = new THREE.Vector3(0, 1, 0);
+    this.emitSparks(p, up, 90, 16, [1, 0.62, 0.25]); this.emitSparks(p, up, 30, 10, [1, 0.95, 0.8]);
+    this.emitDebris(p, up, 16, 8 + power * 2);
+    this.pulse(p, 2.2 * power, 0xffd09a, 0.5); this.pulse(p, 1.2 * power, 0xffffff, 0.25);
+    for (let i = 0; i < 4; i++) this.puff(p.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.2, Math.random() * 0.8, (Math.random() - 0.5) * 1.2)), power);
+    if (this.onImpact) this.onImpact(power * 1.3, 'kill');
+  }
+  // Repulsor strike on a building / ground.
+  spark(p, dir) { this.emitSparks(p, dir, 12, 7, [0.7, 0.95, 1]); this.pulse(p, 0.55, 0x9fe8ff, 0.25); }
+  muzzle(p, dir) { this.emitSparks(p, dir, 5, 6, [1, 0.35, 0.22]); }
+
+  update(dt) {
+    const cq = this.camera ? this.camera.quaternion : null;
+    for (let i = 0; i < this.N; i++) {
+      const j = i * 3; let l = this.sLife[i];
+      if (l <= 0) { if (this.sCol[j] || this.sCol[j + 1] || this.sCol[j + 2]) this.sCol[j] = this.sCol[j + 1] = this.sCol[j + 2] = 0; continue; }
+      l -= dt; this.sLife[i] = l; const dr = Math.max(0, 1 - 1.6 * dt);
+      this.sVel[j + 1] -= 16 * dt; this.sVel[j] *= dr; this.sVel[j + 1] *= dr; this.sVel[j + 2] *= dr;
+      this.sPos[j] += this.sVel[j] * dt; this.sPos[j + 1] += this.sVel[j + 1] * dt; this.sPos[j + 2] += this.sVel[j + 2] * dt;
+      const k = Math.max(0, l / this.sMax[i]); this.sCol[j] = this.sBase[j] * k; this.sCol[j + 1] = this.sBase[j + 1] * k; this.sCol[j + 2] = this.sBase[j + 2] * k;
+    }
+    this.points.geometry.attributes.position.needsUpdate = true; this.points.geometry.attributes.color.needsUpdate = true;
+    let dirty = false;
+    for (let i = 0; i < this.D; i++) {
+      const d = this.deb[i]; if (d.life <= 0) continue;
+      dirty = true; d.life -= dt;
+      if (d.life <= 0) { this.debMesh.setMatrixAt(i, this._z); continue; }
+      d.v.y -= 20 * dt; d.p.addScaledVector(d.v, dt);
+      if (d.p.y < d.fl + 0.05) { d.p.y = d.fl + 0.05; if (d.v.y < 0) d.v.y *= -0.32; d.v.x *= 0.6; d.v.z *= 0.6; d.rv.multiplyScalar(0.5); }
+      d.r.x += d.rv.x * dt; d.r.y += d.rv.y * dt; d.r.z += d.rv.z * dt;
+      const sc = Math.min(1, d.life * 3);
+      this._m.compose(d.p, this._q.setFromEuler(d.r), this._s.set(sc, sc, sc)); this.debMesh.setMatrixAt(i, this._m);
+    }
+    if (dirty) this.debMesh.instanceMatrix.needsUpdate = true;
+    for (const u of this.pulses) {
+      if (u.t >= 1) { if (u.ring.visible) u.ring.visible = u.flash.visible = false; continue; }
+      u.t = Math.min(1, u.t + dt / u.dur); const t = u.t;
+      u.ring.scale.setScalar(u.size * (0.5 + t * 5)); u.ring.material.opacity = (1 - t) * 0.8; if (cq) u.ring.quaternion.copy(cq);
+      u.flash.scale.setScalar(u.size * 3.2 * (1 - t * 0.5)); u.flash.material.opacity = (1 - t) * (1 - t);
+    }
+    for (const u of this.puffs) {
+      if (u.t >= 1) { if (u.s.visible) u.s.visible = false; continue; }
+      u.t = Math.min(1, u.t + dt / 1.1); u.s.position.y += dt * 1.3; u.s.scale.setScalar(u.size * (1.5 + u.t * 5)); u.s.material.opacity = 0.5 * (1 - u.t);
+    }
+  }
 }
 
 // ===== main.js =====
@@ -1815,6 +1981,14 @@ async function boot() {
   const cine = new CinematicDirector(sm.camera, hero);
   const missionEnv = new MissionEnvironment(sm.scene, city);
   const mission = new CombatMission(sm.scene, hud);
+  // Combat feedback: sparks/debris/shockwave, camera shake, hit-stop on kills and a red damage flash.
+  const fx = new ImpactFX(sm.scene); fx.camera = sm.camera; fx.surfaceAt = (x, z, y) => city.surfaceAt(x, z, y);
+  mission.fx = fx; rep.fx = fx; rep.world = city; let hitStop = 0;
+  fx.onImpact = (power, kind) => { cam.bump(Math.min(.32, .05 + .07 * power)); if (kind === 'kill' || power > 1.4) hitStop = Math.max(hitStop, .07); };
+  const hitFlash = document.createElement('div');
+  hitFlash.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:3;opacity:0;background:radial-gradient(ellipse at center,rgba(255,40,30,0) 45%,rgba(255,40,30,.6) 100%)';
+  document.body.appendChild(hitFlash);
+  mission.onPlayerHit = () => { hitFlash.style.transition = 'none'; hitFlash.style.opacity = 1; void hitFlash.offsetWidth; hitFlash.style.transition = 'opacity .45s'; hitFlash.style.opacity = 0; cam.bump(.2); };
   const traffic = new TrafficSystem(sm.scene, perf);
   cam.attach(sm.renderer.domElement);
   const citySurfaceAt = city.surfaceAt.bind(city), cityResolveCircle = city.resolveCircle.bind(city), cityRaycast = city.raycast.bind(city);
@@ -1935,6 +2109,7 @@ async function boot() {
   ]);
   const community = new CommunityAssetLayer(sm.scene, assets, perf);
   await community.load().catch(e => hud.logError('COMMUNITY ASSETS: ' + e.message));
+  fx.setTextures(community.textures);
   const environment = (await assets.loadEXR('modern_evening_street_1k.exr').catch(() => null)) || (await assets.loadEXR('urban_street_01_1k.exr').catch(() => null));
   if (environment) sm.setEnvironment(environment);
   community.apply(hero, rep);
@@ -1987,7 +2162,8 @@ async function boot() {
   const clock = new THREE.Clock();
   (function frame() {
     requestAnimationFrame(frame);
-    const dt = Math.min(clock.getDelta(), 0.05);
+    let dt = Math.min(clock.getDelta(), 0.05);
+    if (hitStop > 0) { hitStop -= dt; dt *= 0.15; }
     perf.frame(dt);
     if (gamePaused) { sm.render(move.pos, {}); return; }
     if (!gameStarted) { hero.root.position.copy(move.pos); hero.root.rotation.y = move.heading; hero.update(dt, 0, 0, false, MODE.WALK, 0, false); city.update(move.pos); community.update(dt); if(missionEnv.active==='city')traffic.update(dt, move.pos); cine.update(dt, move); sm.render(move.pos, {}); return; }
@@ -2006,7 +2182,7 @@ async function boot() {
     if(missionEnv.active==='city')traffic.update(dt, move.pos);
     rep.update(dt, inp.boost, mission, hud);
      if(hud.input.fire&&gameStarted&&!gamePaused&&hud.handlers.fire)hud.handlers.fire();
-     mission.update(dt, move.pos, hud); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
+     mission.update(dt, move.pos, hud); fx.update(dt); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
     if (cine.enabled) cine.update(dt, move); else if(cameraMode==='FIRST'){const eye=hero.root.position.clone().add(new THREE.Vector3(0,1.62,0));sm.camera.position.copy(eye);const a=move.heading+cam.yaw;sm.camera.lookAt(eye.x-Math.sin(a)*30,eye.y-Math.sin(cam.pitch)*8,eye.z-Math.cos(a)*30);sm.camera.fov=THREE.MathUtils.damp(sm.camera.fov,move.flying?76:68,5,dt);sm.camera.updateProjectionMatrix();}else cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed });
     hud.readout(move.mode, move.pos.y, move.speed * 3.6, rep.energy);document.getElementById('helmetEnergy').textContent=Math.round(rep.energy)+'%';drawMiniMap(move.pos, move.heading, mission);
     sm.render(move.pos, { speed: move.speed, boost: inp.boost });
