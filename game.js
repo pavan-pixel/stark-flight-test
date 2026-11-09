@@ -1910,7 +1910,9 @@ async function boot() {
     traffic.loadModels(assets).catch(e => { hud.logError('TRAFFIC MODELS: ' + e.message); return false; }),
     Promise.resolve(false).then(ok=>{nycOk=ok;}),
   ]);
-  const community = new CommunityAssetLayer(sm.scene, assets, perf);\n  await community.load().catch(e => hud.logError('COMMUNITY ASSETS: ' + e.message));\n  const environment = (await assets.loadEXR('modern_evening_street_1k.exr').catch(() => null)) || (await assets.loadEXR('urban_street_01_1k.exr').catch(() => null));
+  const community = new CommunityAssetLayer(sm.scene, assets, perf);
+  await community.load().catch(e => hud.logError('COMMUNITY ASSETS: ' + e.message));
+  const environment = (await assets.loadEXR('modern_evening_street_1k.exr').catch(() => null)) || (await assets.loadEXR('urban_street_01_1k.exr').catch(() => null));
   if (environment) sm.setEnvironment(environment);
   assets.release();
   const degraded = !heroOk || !cityOk || failures.length > 0;
