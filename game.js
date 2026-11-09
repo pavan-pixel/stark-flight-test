@@ -198,14 +198,14 @@ class SceneManager {
     this.perf = perf;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(FOG_COLOR);
-    this.scene.fog = new THREE.FogExp2(FOG_COLOR, 0.0021);
+    this.scene.fog = new THREE.FogExp2(FOG_COLOR, 0.00145);
     this.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 3500);
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, perf.tier.pixelRatio));
     this.renderer.setSize(innerWidth, innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.toneMappingExposure = 1.08;
     document.body.prepend(this.renderer.domElement);
 
     // Image-based lighting (procedural, no download) for metal reflections.
@@ -215,8 +215,9 @@ class SceneManager {
     this._environmentTarget = null;
     this._environmentSource = null;
 
-    this.scene.add(new THREE.HemisphereLight(0xcfe4ff, 0x3b4350, 1.1));
-    this.sun = new THREE.DirectionalLight(0xfff1d6, 2.6);
+    this.scene.add(new THREE.HemisphereLight(0xd9edff, 0x252f3b, 1.35));
+    this.scene.add(new THREE.AmbientLight(0x71849a, 0.22));
+    this.sun = new THREE.DirectionalLight(0xffe6c2, 3.0);
     this.sun.position.copy(SUN_DIR).multiplyScalar(300);
     this.scene.add(this.sun);
 
@@ -236,12 +237,17 @@ class SceneManager {
     this.scene.add(this.sunFlare);
 
     // Realtime sun shadows on the high tier only (follows the hero, so the 280 m box stays sharp).
-    this.shadows = perf.tier.name === 'high';
+    // Mobile gets a compact, short-range shadow map rather than having all shadows disabled.
+    this.shadows = true;
     if (this.shadows) {
       this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      this.sun.castShadow = true; this.sun.shadow.mapSize.set(2048, 2048);
-      const sc = this.sun.shadow.camera; sc.left = -140; sc.right = 140; sc.top = 140; sc.bottom = -140; sc.near = 10; sc.far = 700; sc.updateProjectionMatrix();
-      this.sun.shadow.bias = -0.0008; this.sun.shadow.normalBias = 0.6;
+      this.sun.castShadow = true;
+      const shadowSize = perf.isMobile ? 768 : (perf.tier.name === 'high' ? 2048 : 1024);
+      this.sun.shadow.mapSize.set(shadowSize, shadowSize);
+      const sc = this.sun.shadow.camera, extent = perf.isMobile ? 92 : 140;
+      sc.left = -extent; sc.right = extent; sc.top = extent; sc.bottom = -extent; sc.near = 10; sc.far = perf.isMobile ? 360 : 700; sc.updateProjectionMatrix();
+      this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.035;
+      this.sun.shadow.radius = perf.isMobile ? 2 : 3;
       this.scene.add(this.sun.target);
     }
     // Post-processing: bloom + grade + speed blur on medium/high; low tier renders directly.
@@ -485,41 +491,37 @@ class CityManager {
 
   _buildManhattanArchitecture() {
     const makeFacade = (style) => {
-      const canvas=document.createElement('canvas'); canvas.width=512; canvas.height=512;
+      const canvas=document.createElement('canvas');canvas.width=canvas.height=512;
       const ctx=canvas.getContext('2d');
       const palettes=[
-        ['#263d50','#4c7187','#a9c7d7','#132432'],
-        ['#a69a84','#d2c5a9','#e5dcc8','#655b4d'],
-        ['#684b43','#a16f5c','#d2a48c','#352a29'],
-        ['#202b35','#536575','#a9bac5','#111923']
+        ['#172b3b','#35576c','#b7d5e5','#081724'],
+        ['#766e61','#b4a994','#e2d8c4','#393a3a'],
+        ['#563d37','#936454','#d4ad96','#2b2222'],
+        ['#182531','#405568','#b2c5d1','#070f18']
       ];
-      const p=palettes[style%palettes.length];
-      const grad=ctx.createLinearGradient(0,0,512,512);
-      grad.addColorStop(0,p[0]); grad.addColorStop(.55,p[1]); grad.addColorStop(1,p[0]);
-      ctx.fillStyle=grad; ctx.fillRect(0,0,512,512);
-      const cols=14, rows=22, cellW=512/cols, cellH=512/rows;
-      for(let row=0;row<rows;row++){
-        for(let col=0;col<cols;col++){
-          const x=col*cellW+4, y=row*cellH+4, w=cellW-8, h=cellH-8;
-          ctx.fillStyle=p[3]; ctx.fillRect(x-1,y-1,w+2,h+2);
-          const lit=((row*17+col*29+style*13)%19===0);
-          ctx.fillStyle=lit?'#f5dca0':p[2];
-          ctx.globalAlpha=lit?.92:.72; ctx.fillRect(x,y,w,h); ctx.globalAlpha=1;
-          ctx.fillStyle='rgba(255,255,255,.22)'; ctx.fillRect(x,y,w,2);
-        }
+      const p=palettes[style%palettes.length],grad=ctx.createLinearGradient(0,0,512,0);
+      grad.addColorStop(0,p[0]);grad.addColorStop(.48,p[1]);grad.addColorStop(1,p[0]);ctx.fillStyle=grad;ctx.fillRect(0,0,512,512);
+      const cols=12,rows=20,cw=512/cols,ch=512/rows;
+      for(let row=0;row<rows;row++)for(let col=0;col<cols;col++){
+        const x=col*cw+5,y=row*ch+4,w=cw-10,h=ch-8,lit=((row*17+col*29+style*13)%17===0)||((row*7+col*11+style)%31===0);
+        ctx.fillStyle='#09131d';ctx.fillRect(x-3,y-3,w+6,h+6);
+        ctx.fillStyle=lit?'#f6d99a':p[2];ctx.globalAlpha=lit?.98:.76;ctx.fillRect(x,y,w,h);ctx.globalAlpha=1;
+        ctx.fillStyle='rgba(255,255,255,.32)';ctx.fillRect(x,y,w,2);
+        ctx.fillStyle='rgba(4,10,17,.48)';ctx.fillRect(x,y+h-3,w,3);
+        if(col%3===0){ctx.fillStyle='rgba(255,255,255,.10)';ctx.fillRect(x+w-2,y,2,h);}
       }
-      for(let row=0;row<=rows;row++){ctx.fillStyle='rgba(20,25,31,.55)';ctx.fillRect(0,row*cellH,512,3);}
-      const tex=new THREE.CanvasTexture(canvas); tex.colorSpace=THREE.SRGBColorSpace;
-      tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.anisotropy=4; tex.needsUpdate=true;
-      return tex;
+      ctx.fillStyle='rgba(8,15,22,.82)';for(let row=0;row<=rows;row++)ctx.fillRect(0,row*ch,512,4);
+      // Subtle stone spandrels and vertical facade mullions add scale and depth cues.
+      ctx.fillStyle='rgba(8,15,22,.38)';for(let col=0;col<=cols;col++)ctx.fillRect(col*cw,0,4,512);
+      const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.anisotropy=Math.min(8,this.perf.isMobile?4:8);tex.needsUpdate=true;return tex;
     };
-    const roofMat=new THREE.MeshStandardMaterial({color:0x39434d,roughness:.82,metalness:.18});
-    const stoneMat=new THREE.MeshStandardMaterial({color:0x777e82,roughness:.9,metalness:.05});
+    const roofMat=new THREE.MeshStandardMaterial({color:0x303a45,roughness:.76,metalness:.22});
+    const stoneMat=new THREE.MeshStandardMaterial({color:0x777e82,roughness:.84,metalness:.08});
     const facadeMats=[];
     const facadeTextures=[];
     for(let s=0;s<4;s++){
       const tex=makeFacade(s); facadeTextures.push(tex);
-      const side=new THREE.MeshStandardMaterial({map:tex,roughness:s===0||s===3?.34:.72,metalness:s===0||s===3?.42:.08});
+      const side=new THREE.MeshStandardMaterial({map:tex,roughness:s===0||s===3?.26:.58,metalness:s===0||s===3?.48:.16,envMapIntensity:s===0||s===3?1.05:.55});
       facadeMats.push([side,side,roofMat,roofMat,side,side]);
     }
     const boxGeo=new THREE.BoxGeometry(1,1,1);
