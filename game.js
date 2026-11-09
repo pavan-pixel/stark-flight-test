@@ -1035,18 +1035,24 @@ class IronMan {
     const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d');
     const g=x.createRadialGradient(32,32,0,32,32,32);g.addColorStop(0,'rgba(255,255,255,1)');g.addColorStop(.3,'rgba(120,230,255,.8)');g.addColorStop(1,'rgba(60,180,255,0)');
     x.fillStyle=g;x.fillRect(0,0,64,64);const tex=new THREE.CanvasTexture(c);
-    const outerGeo=new THREE.CylinderGeometry(.025,.16,1.2,9,1,true);
-    const innerGeo=new THREE.CylinderGeometry(.012,.072,.78,8,1,true);
-    const outerMat=new THREE.MeshBasicMaterial({color:0x28aaff,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
-    const innerMat=new THREE.MeshBasicMaterial({color:0xc9f7ff,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
+    // Layered blue plasma envelope, cyan core and white-hot centre.
+    const outerGeo=new THREE.CylinderGeometry(.025,.22,1.9,10,1,true);
+    const innerGeo=new THREE.CylinderGeometry(.012,.105,1.35,9,1,true);
+    const coreGeo=new THREE.CylinderGeometry(.006,.045,.92,8,1,true);
+    const outerMat=new THREE.MeshBasicMaterial({color:0x168dff,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
+    const innerMat=new THREE.MeshBasicMaterial({color:0x62dcff,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
+    const coreMat=new THREE.MeshBasicMaterial({color:0xe8fdff,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
     this.thrusters=[];
     for(const id of ['lHand','rHand','lFoot','rFoot']){
       const nozzle=new THREE.Group();this.root.add(nozzle);
       const outer=new THREE.Mesh(outerGeo,outerMat.clone());outer.position.y=-.6;nozzle.add(outer);
-      const inner=new THREE.Mesh(innerGeo,innerMat.clone());inner.position.y=-.39;nozzle.add(inner);
-      const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,color:0x80eaff,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,opacity:0}));
-      glow.scale.set(.5,.5,1);nozzle.add(glow);
-      nozzle.visible=false;this.thrusters.push({id,nozzle,outer,inner,glow});
+      const inner=new THREE.Mesh(innerGeo,innerMat.clone());inner.position.y=-.72;nozzle.add(inner);
+      const core=new THREE.Mesh(coreGeo,coreMat.clone());core.position.y=-1.18;nozzle.add(core);
+      const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,color:0x8cecff,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,opacity:0}));
+      glow.scale.set(.9,1.7,1);glow.position.y=-2;nozzle.add(glow);
+      const flare=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,color:0x2d9fff,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,opacity:0}));
+      flare.scale.set(1.45,2.7,1);flare.position.y=-2.1;nozzle.add(flare);
+      nozzle.visible=false;this.thrusters.push({id,nozzle,outer,inner,core,glow,flare});
     }
     this._jetDir=new THREE.Vector3();this._jetUp=new THREE.Vector3(0,1,0);this._jetWorld=new THREE.Vector3();this._jetLocal=new THREE.Vector3();this._jetPos=new THREE.Vector3();
     this.chestLight=new THREE.PointLight(0x66e6ff,.8,7);this.root.add(this.chestLight);
@@ -1180,12 +1186,19 @@ class IronMan {
       jet.nozzle.quaternion.setFromUnitVectors(this._jetUp,this._jetWorld.clone().negate());
       const amount=flightMode?thrust:0;
       jet.nozzle.visible=amount>.035;
-      const length=(isHand?.42:1.0)*(.55+amount*.7)*(boost?1.25:1);
-      jet.outer.scale.set(1,length,1);jet.inner.scale.set(1,length*.72,1);
-      jet.outer.material.opacity=Math.min(.78,amount*.48);
-      jet.inner.material.opacity=Math.min(1,amount*.72);
-      jet.glow.material.opacity=Math.min(.95,amount*.72);
-      jet.glow.scale.set(isHand?.42:.58,isHand?.42:.58,1);
+      const pulse=1+Math.sin(performance.now()*.035+(isHand?1.4:0))*.055;
+      const length=(isHand?.72:1.35)*(.72+amount*.92)*(boost?1.55:1)*pulse;
+      jet.outer.scale.set(1,length,1);jet.outer.position.y=-.95*length;
+      jet.inner.scale.set(1,length*.9,1);jet.inner.position.y=-.675*length;
+      jet.core.scale.set(1,length*.82,1);jet.core.position.y=-.46*length;
+      jet.outer.material.opacity=Math.min(.9,amount*.62);
+      jet.inner.material.opacity=Math.min(1,amount*.86);
+      jet.core.material.opacity=Math.min(1,amount*.95);
+      jet.glow.material.opacity=Math.min(1,amount*.9);
+      jet.flare.material.opacity=Math.min(.8,amount*(boost?.72:.42));
+      jet.glow.position.y=-1.75*length;jet.flare.position.y=-1.9*length;
+      jet.glow.scale.set((isHand?.72:1)*length*.72,length*1.25,1);
+      jet.flare.scale.set((isHand?1:1.55)*length,length*1.9,1);
     }
     if (this.bloom) { const target = boost ? 0.9 : 0, s = 3.5 + (boost ? 3 : 0) + Math.sin(performance.now() * 0.02) * 0.4 * (boost ? 1 : 0);
       this.bloom.material.opacity += (target - this.bloom.material.opacity) * Math.min(1, dt * 8); this.bloom.scale.set(s, s, 1); }
@@ -1266,17 +1279,25 @@ class ThirdPersonCamera {
     this._tmp = new THREE.Vector3(); this._dir = new THREE.Vector3(); this.pos = new THREE.Vector3(0, 4, 12);
   }
   attach(el) {
-    el.style.touchAction = 'none';
-    el.style.touchAction='none'; el.addEventListener('pointerdown', e => { if(e.target.closest('#joy,.controls,button,input,select,#minimapWrap'))return; e.preventDefault(); this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); try{el.setPointerCapture(e.pointerId);}catch(_){} if (this.pointers.size === 2) this.pinch = this._span(); });
-    el.addEventListener('pointermove', e => {
-      const p = this.pointers.get(e.pointerId); if (!p) return; e.preventDefault();
-      const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
-      if (this.pointers.size >= 2) { const s = this._span(); this.userDist = clamp(this.userDist * (this.pinch / Math.max(s, 1)), 0.6, 2.2); this.pinch = s; }
-      else { this.yaw -= dx * 0.0030; this.pitch = clamp(this.pitch + dy * 0.0022, -0.30, 0.72); }
-    });
-    const up = e => { this.pointers.delete(e.pointerId); if (this.pointers.size < 2) this.pinch = 0; };
-    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); el.addEventListener('lostpointercapture', up);
-    el.addEventListener('wheel', e => { this.userDist = clamp(this.userDist * (1 + e.deltaY * 0.001), 0.6, 2.2); }, { passive: true });
+    // Window-level tracking is more reliable for captured touch gestures in iOS Safari.
+    el.style.touchAction='none';
+    const blocked=target=>!!(target&&target.closest&&target.closest('#joy,.controls,button,input,select,#minimapWrap,#gameTopActions,.pauseShade'));
+    el.addEventListener('pointerdown',e=>{
+      if(blocked(e.target)||(e.pointerType==='mouse'&&e.button!==0))return;
+      e.preventDefault();this.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      try{el.setPointerCapture(e.pointerId);}catch(_){}
+      if(this.pointers.size===2)this.pinch=this._span();
+    },{passive:false});
+    window.addEventListener('pointermove',e=>{
+      const p=this.pointers.get(e.pointerId);if(!p)return;e.preventDefault();
+      const dx=e.clientX-p.x,dy=e.clientY-p.y;p.x=e.clientX;p.y=e.clientY;
+      if(this.pointers.size>=2){const s=this._span();if(this.pinch>0)this.userDist=clamp(this.userDist*(this.pinch/Math.max(s,1)),.6,2.2);this.pinch=s;}
+      else{this.yaw-=dx*.0042;this.pitch=clamp(this.pitch+dy*.003,-.38,.78);}
+    },{passive:false});
+    const up=e=>{this.pointers.delete(e.pointerId);if(this.pointers.size<2)this.pinch=0;};
+    window.addEventListener('pointerup',up,{passive:true});window.addEventListener('pointercancel',up,{passive:true});
+    el.addEventListener('lostpointercapture',up);
+    el.addEventListener('wheel',e=>{this.userDist=clamp(this.userDist*(1+e.deltaY*.001),.6,2.2);},{passive:true});
   }
   _span() { const a = [...this.pointers.values()]; return a.length < 2 ? 1 : Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); }
   bump(amount) { this.shake = Math.max(this.shake, amount); }
@@ -1308,7 +1329,7 @@ class ThirdPersonCamera {
 class RepulsorSystem {
   constructor(scene) {
     this.scene = scene; this.energy = 100; this.last = 0; this.shots = [];
-    this.geo = new THREE.SphereGeometry(0.14, 10, 8); this.mat = new THREE.MeshBasicMaterial({ color: 0x9ff4ff, fog: false }); this.axis = new THREE.Vector3(0,0,1);
+    this.geo = new THREE.SphereGeometry(0.16, 12, 10); this.mat = new THREE.MeshBasicMaterial({ color: 0xd9fbff, fog: false }); this.axis = new THREE.Vector3(0,0,1);
     this.pool = [];
   }
   fire(origins, dir) {
@@ -1340,7 +1361,7 @@ const $ = id => document.getElementById(id);
 class HUD {
   constructor() {
     this.steer = { x: 0, y: 0 };
-    this.input = { run: false, boost: false, hover: false, up: 0, down: 0 };
+    this.input = { run: false, boost: false, hover: false, up: 0, down: 0, fire: false };
     this.handlers = {};
     this._joystick(); this._buttons();
   }
@@ -1382,7 +1403,9 @@ class HUD {
     $('hover').addEventListener('click', () => { this.input.hover = !this.input.hover; $('hover').classList.toggle('on', this.input.hover); this.toast(this.input.hover ? 'HOVER ENGAGED' : 'HOVER OFF'); });
     $('fly').addEventListener('click', () => this.handlers.fly && this.handlers.fly());
     $('land').addEventListener('click', () => this.handlers.land && this.handlers.land());
-    $('fire').addEventListener('click', () => this.handlers.fire && this.handlers.fire());
+    // Hold to fire on touch; retain click activation for keyboard/screen-reader users.
+     $('fire').addEventListener('click',e=>{if(e.detail===0&&this.handlers.fire)this.handlers.fire();});
+     this._hold('fire','fire',true);
     $('attack').addEventListener('click', () => this.handlers.attack && this.handlers.attack('punch'));
     $('kick').addEventListener('click', () => this.handlers.attack && this.handlers.attack('kick'));
     $('view').addEventListener('click', () => this.handlers.view && this.handlers.view());
@@ -1904,7 +1927,9 @@ async function boot() {
     hero.update(dt, move.flying ? 1 : 0, move.speed, inp.boost, move.mode, move.vel.y, inp.hover, move.vel);
     city.update(move.pos);
     if(missionEnv.active==='city')traffic.update(dt, move.pos);
-    rep.update(dt, inp.boost, mission, hud); mission.update(dt, move.pos, hud); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
+    rep.update(dt, inp.boost, mission, hud);
+     if(hud.input.fire&&gameStarted&&!gamePaused&&hud.handlers.fire)hud.handlers.fire();
+     mission.update(dt, move.pos, hud); if (inp.boost) rep.energy = Math.max(0, rep.energy - dt * 14);
     if (cine.enabled) cine.update(dt, move); else if(cameraMode==='FIRST'){const eye=hero.root.position.clone().add(new THREE.Vector3(0,1.62,0));sm.camera.position.copy(eye);const a=move.heading+cam.yaw;sm.camera.lookAt(eye.x-Math.sin(a)*30,eye.y-Math.sin(cam.pitch)*8,eye.z-Math.cos(a)*30);sm.camera.fov=THREE.MathUtils.damp(sm.camera.fov,move.flying?76:68,5,dt);sm.camera.updateProjectionMatrix();}else cam.update(dt, move.pos, { flying: move.flying, boost: inp.boost, speed: move.speed });
     hud.readout(move.mode, move.pos.y, move.speed * 3.6, rep.energy);document.getElementById('helmetEnergy').textContent=Math.round(rep.energy)+'%';drawMiniMap(move.pos, move.heading, mission);
     sm.render(move.pos, { speed: move.speed, boost: inp.boost });
